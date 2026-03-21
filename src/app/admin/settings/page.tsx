@@ -23,6 +23,8 @@ export default function SettingsPage() {
   const [editValues, setEditValues] = useState<Record<string, string>>({});
   const [webhookUrl, setWebhookUrl] = useState('');
   const [webhookStatus, setWebhookStatus] = useState('');
+  const [botAction, setBotAction] = useState<string | null>(null);
+  const [botActionResult, setBotActionResult] = useState('');
 
   useEffect(() => {
     fetch('/api/settings')
@@ -46,6 +48,32 @@ export default function SettingsPage() {
     setSaving(null);
     setSaved(key);
     setTimeout(() => setSaved(null), 2000);
+  }
+
+  async function runBotAction(action: string, label: string) {
+    setBotAction(action);
+    setBotActionResult('');
+    try {
+      if (action === 'restart') {
+        // Delete then re-set webhook using current URL
+        const currentUrl = window.location.origin + '/api/webhook';
+        const res = await fetch('/api/webhook/setup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: currentUrl }),
+        });
+        const data = await res.json() as { success: boolean };
+        setBotActionResult(data.success ? `✅ ${label}: webhook переустановлен на ${currentUrl}` : '❌ Ошибка');
+      } else if (action === 'sync') {
+        const res = await fetch('/api/sync');
+        const data = await res.json() as { ok: boolean; totalFetched: number; totalSaved: number };
+        setBotActionResult(data.ok ? `✅ Синхронизация: загружено ${data.totalFetched}, сохранено ${data.totalSaved}` : '❌ Ошибка синхронизации');
+      }
+    } catch {
+      setBotActionResult('❌ Ошибка выполнения действия');
+    } finally {
+      setBotAction(null);
+    }
   }
 
   async function setWebhook() {
@@ -73,14 +101,14 @@ export default function SettingsPage() {
       : setting.key === 'openai_model' ? OPENAI_MODELS : [];
 
     return (
-      <div key={setting.key} className="flex items-start gap-4 py-4 border-b border-slate-100 last:border-0">
+      <div key={setting.key} className="flex flex-col sm:flex-row sm:items-start gap-2 sm:gap-4 py-4 border-b border-slate-100 last:border-0">
         <div className="flex-1 min-w-0">
           <p className="font-mono text-sm font-semibold text-slate-700">{setting.key}</p>
           {setting.description && (
             <p className="text-xs text-slate-400 mt-0.5">{setting.description}</p>
           )}
         </div>
-        <div className="flex items-center gap-2 w-80 shrink-0">
+        <div className="flex items-center gap-2 sm:w-80 shrink-0">
           {isSelect ? (
             <select
               className="input flex-1"
@@ -156,6 +184,33 @@ export default function SettingsPage() {
         </div>
         {webhookStatus && (
           <p className="text-sm mt-2 text-slate-600">{webhookStatus}</p>
+        )}
+      </div>
+
+      {/* Bot Management */}
+      <div className="card p-6">
+        <h2 className="font-semibold text-slate-900 mb-1">Управление ботом</h2>
+        <p className="text-sm text-slate-400 mb-4">
+          Перезагрузка переустановит webhook на текущий домен. Синхронизация загрузит свежие тендеры с zakupki.gov.ru.
+        </p>
+        <div className="flex flex-wrap gap-3">
+          <button
+            onClick={() => runBotAction('restart', 'Перезагрузка')}
+            disabled={botAction !== null}
+            className="btn-primary disabled:opacity-50"
+          >
+            {botAction === 'restart' ? '⏳ Перезагрузка...' : '🔄 Перезагрузить бота'}
+          </button>
+          <button
+            onClick={() => runBotAction('sync', 'Синхронизация')}
+            disabled={botAction !== null}
+            className="btn-secondary disabled:opacity-50"
+          >
+            {botAction === 'sync' ? '⏳ Загрузка...' : '🔃 Синхронизировать тендеры'}
+          </button>
+        </div>
+        {botActionResult && (
+          <p className="text-sm mt-3 text-slate-600">{botActionResult}</p>
         )}
       </div>
 
