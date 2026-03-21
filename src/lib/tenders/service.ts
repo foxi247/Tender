@@ -96,12 +96,12 @@ export async function getRelevantTendersForUser(
 
   const hiddenIds = (hiddenActions ?? []).map((a) => a.tender_id);
 
-  // Fetch active tenders from last 7 days
+  // Fetch active tenders from last 30 days
   let query = supabase
     .from('tenders')
     .select('*')
     .eq('status', 'active')
-    .gte('published_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
+    .gte('published_at', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString())
     .order('published_at', { ascending: false })
     .limit(100);
 

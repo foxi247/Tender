@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getTenderSource } from '@/lib/tenders/sources/provider';
 import { upsertTender } from '@/lib/tenders/service';
 import { logger } from '@/lib/logger';
+import { cookies } from 'next/headers';
 
 const CRON_SECRET = process.env.CRON_SECRET;
 
@@ -21,10 +22,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   return runSync();
 }
 
-// GET for manual trigger from admin or cron
-export async function GET(req: NextRequest): Promise<NextResponse> {
-  const authHeader = req.headers.get('authorization');
-  if (CRON_SECRET && authHeader !== `Bearer ${CRON_SECRET}`) {
+// GET for manual trigger from admin panel (uses admin cookie auth)
+export async function GET(): Promise<NextResponse> {
+  const cookieStore = await cookies();
+  const isAdmin = cookieStore.get('admin_auth')?.value === 'true';
+  if (!isAdmin) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 

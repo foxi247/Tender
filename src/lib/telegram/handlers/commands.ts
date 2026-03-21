@@ -60,7 +60,15 @@ export async function handleToday(message: TelegramMessage): Promise<void> {
   const tenders = await getRelevantTendersForUser(user.id, preferences, 5);
 
   if (tenders.length === 0) {
-    await sendMessage(chat.id, formatNoTendersMessage(), { reply_markup: mainMenuKeyboard() });
+    const { getTenderStats } = await import('@/lib/tenders/service');
+    const stats = await getTenderStats();
+    let msg: string;
+    if (stats.total === 0) {
+      msg = '📭 *База тендеров пуста*\n\nТендеры ещё не загружены\\. Администратор должен запустить синхронизацию в панели управления\\.\n\n_Попробуйте позже_ — синхронизация запускается ежедневно в 6:00\\.';
+    } else {
+      msg = formatNoTendersMessage();
+    }
+    await sendMessage(chat.id, msg, { reply_markup: mainMenuKeyboard() });
     return;
   }
 
