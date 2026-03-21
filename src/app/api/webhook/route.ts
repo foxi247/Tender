@@ -22,8 +22,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
-  // Process async — respond to Telegram immediately
-  processUpdate(update).catch((err) => {
+  await processUpdate(update).catch((err) => {
     logger.error('Unhandled update error', { err, update });
   });
 
