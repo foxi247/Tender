@@ -2,6 +2,11 @@ import type { ScoredTender, MarketStats } from '@/types';
 import { formatBudget } from '@/lib/tenders/scorer';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
+import { FILTER_PLATFORMS } from '@/lib/telegram/keyboards';
+
+function platformLabel(sourceId: string): string {
+  return FILTER_PLATFORMS.find((p) => p.id === sourceId)?.label ?? sourceId;
+}
 
 export function formatTenderCard(tender: ScoredTender, index?: number): string {
   const lines: string[] = [];
@@ -199,7 +204,7 @@ export function formatFilterMenu(
   const regs = regions.length > 0 ? escapeMarkdown(regions.join(', ')) : '_не выбраны_';
   const budget = maxBudget ? `до ${escapeMarkdown(formatBudgetShort(maxBudget))}` : '_без ограничений_';
   const platforms = preferredSources.length > 0
-    ? escapeMarkdown(preferredSources.map((s) => s === 'bicotender' ? 'Bico' : 'Zakupki\\.gov').join(', '))
+    ? escapeMarkdown(preferredSources.map(platformLabel).join(', '))
     : '_все площадки_';
 
   return [
@@ -263,7 +268,7 @@ export function formatFilterSaved(
   const regs = regions.length > 0 ? escapeMarkdown(regions.join(', ')) : '_все регионы_';
   const budget = maxBudget ? `до ${escapeMarkdown(formatBudgetShort(maxBudget))}` : '_без ограничений_';
   const platforms = preferredSources.length > 0
-    ? escapeMarkdown(preferredSources.map((s) => s === 'bicotender' ? 'Bico' : 'Zakupki.gov').join(', '))
+    ? escapeMarkdown(preferredSources.map(platformLabel).join(', '))
     : '_все площадки_';
 
   return [

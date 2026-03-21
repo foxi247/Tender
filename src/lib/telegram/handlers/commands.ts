@@ -159,18 +159,22 @@ export async function handleMarket(message: TelegramMessage, category?: string):
     return;
   }
 
+  const prefs = await getUserPreferences(user.id);
+  const preferredSources = (prefs?.preferred_sources as string[] | undefined) ?? [];
+  const filterCategory = category ?? ((prefs?.categories as string[] | undefined)?.[0]);
+
   await sendMessage(chat.id, '📊 _Анализирую рынок\\.\\.\\._', {});
 
   const [stats, ai] = await Promise.all([
-    getMarketStats(category),
+    getMarketStats(filterCategory, preferredSources.length > 0 ? preferredSources : undefined),
     getAIProvider(),
   ]);
 
-  const analysis = await ai.analyzeMarket(stats, category);
-  const text = formatMarketAnalysis(stats, analysis, category);
+  const analysis = await ai.analyzeMarket(stats, filterCategory);
+  const text = formatMarketAnalysis(stats, analysis, filterCategory);
 
   await sendMessage(chat.id, text, {});
-  await logBotEvent(user.id, 'command_market', { category: category ?? null });
+  await logBotEvent(user.id, 'command_market', { category: filterCategory ?? null, sources: preferredSources });
 }
 
 export async function handleFilters(message: TelegramMessage): Promise<void> {

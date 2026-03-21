@@ -2,16 +2,26 @@
 
 import { useState } from 'react';
 
+interface Result {
+  sent: number;
+  failed: number;
+  total: number;
+}
+
 export default function BroadcastPage() {
   const [message, setMessage] = useState('');
   const [activeOnly, setActiveOnly] = useState(true);
+  const [photoUrl, setPhotoUrl] = useState('');
+  const [linkLabel, setLinkLabel] = useState('');
+  const [linkUrl, setLinkUrl] = useState('');
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<{ sent: number; failed: number; total: number } | null>(null);
+  const [result, setResult] = useState<Result | null>(null);
   const [error, setError] = useState('');
 
   async function handleSend() {
     if (!message.trim()) return;
-    if (!confirm(`Отправить сообщение ${activeOnly ? 'активным' : 'всем'} пользователям?`)) return;
+    const audience = activeOnly ? 'активным' : 'всем';
+    if (!confirm(`Отправить сообщение ${audience} пользователям?`)) return;
 
     setLoading(true);
     setResult(null);
@@ -21,12 +31,21 @@ export default function BroadcastPage() {
       const res = await fetch('/api/broadcast', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: message.trim(), activeOnly }),
+        body: JSON.stringify({
+          message: message.trim(),
+          activeOnly,
+          photoUrl: photoUrl.trim() || undefined,
+          linkLabel: linkLabel.trim() || undefined,
+          linkUrl: linkUrl.trim() || undefined,
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? 'Ошибка отправки');
       setResult(data);
       setMessage('');
+      setPhotoUrl('');
+      setLinkLabel('');
+      setLinkUrl('');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Ошибка');
     } finally {
@@ -42,11 +61,12 @@ export default function BroadcastPage() {
       </div>
 
       <div className="card p-6 space-y-5">
+        {/* Message text */}
         <div>
-          <label className="label">Текст сообщения</label>
+          <label className="label">Текст сообщения <span className="text-red-500">*</span></label>
           <textarea
-            className="input mt-1 w-full h-40 resize-none font-mono text-sm"
-            placeholder={'Напишите текст рассылки...\n\nПоддерживается Markdown:\n*жирный*, _курсив_, `код`'}
+            className="input mt-1 w-full h-36 resize-none font-mono text-sm"
+            placeholder={'Напишите текст рассылки...\n\nПоддерживается Markdown:\n*жирный*, _курсив_'}
             value={message}
             onChange={(e) => setMessage(e.target.value)}
             disabled={loading}
@@ -54,6 +74,54 @@ export default function BroadcastPage() {
           <p className="text-xs text-slate-400 mt-1">{message.length} символов</p>
         </div>
 
+        {/* Photo */}
+        <div>
+          <label className="label">
+            📷 Фото{' '}
+            <span className="text-slate-400 font-normal text-xs">(URL — опционально)</span>
+          </label>
+          <input
+            type="url"
+            className="input mt-1 w-full"
+            placeholder="https://example.com/image.jpg"
+            value={photoUrl}
+            onChange={(e) => setPhotoUrl(e.target.value)}
+            disabled={loading}
+          />
+        </div>
+
+        {/* Link button */}
+        <div>
+          <label className="label">
+            🔗 Кнопка-ссылка{' '}
+            <span className="text-slate-400 font-normal text-xs">(для рекламы/анонса)</span>
+          </label>
+          <div className="grid grid-cols-2 gap-3 mt-1">
+            <input
+              type="text"
+              className="input"
+              placeholder="Текст кнопки: 🌐 Наш сайт"
+              value={linkLabel}
+              onChange={(e) => setLinkLabel(e.target.value)}
+              disabled={loading}
+            />
+            <input
+              type="url"
+              className="input"
+              placeholder="https://..."
+              value={linkUrl}
+              onChange={(e) => setLinkUrl(e.target.value)}
+              disabled={loading}
+            />
+          </div>
+          {linkLabel && linkUrl && (
+            <p className="text-xs text-brand-600 mt-1">
+              ✅ Кнопка: <strong>{linkLabel}</strong> → {linkUrl}
+            </p>
+          )}
+        </div>
+
+        {/* Active only */}
         <div className="flex items-center gap-3">
           <input
             type="checkbox"
@@ -101,7 +169,7 @@ export default function BroadcastPage() {
           <div className="bg-slate-50 rounded p-3 font-mono">[ссылка](https://...)</div>
         </div>
         <p className="text-xs text-amber-600 mt-3">
-          ⚠️ Спецсимволы в тексте ( . ! - ( ) ) нужно экранировать обратным слешем: <code className="bg-slate-100 px-1 rounded">\.</code>
+          ⚠️ Спецсимволы ( . ! - ( ) ) нужно экранировать: <code className="bg-slate-100 px-1 rounded">\.</code>
         </p>
       </div>
     </div>
