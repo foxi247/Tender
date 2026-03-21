@@ -8,9 +8,9 @@ import {
 } from '@/lib/telegram/messages';
 import { upsertUser, setAiChatMode, getUserPreferences } from '@/lib/users/service';
 import { getAIProvider } from '@/lib/ai/provider';
-import { getRelevantTendersForUser } from '@/lib/tenders/service';
+import { searchTendersByText } from '@/lib/tenders/service';
 import { logBotEvent } from './logger';
-import type { TelegramMessage, UserPreferences } from '@/types';
+import type { TelegramMessage } from '@/types';
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Intent detection: is the message asking to search tenders?
@@ -130,15 +130,12 @@ export async function handleAiChatMessage(message: TelegramMessage): Promise<voi
         reply_markup: aiChatKeyboard(),
       });
 
-      // Load user base prefs, then override with extracted params
+      // Use direct text search (no source filter, no scoring) so all DB data is accessible
       const basePrefs = await getUserPreferences(user.id);
-      const searchPrefs: UserPreferences = {
-        ...(basePrefs ?? {}),
-        categories: categories.length > 0 ? categories : ((basePrefs?.categories as string[]) ?? []),
-        regions: regions.length > 0 ? regions : ((basePrefs?.regions as string[]) ?? []),
-      } as UserPreferences;
+      const searchCats = categories.length > 0 ? categories : ((basePrefs?.categories as string[]) ?? []);
+      const searchRegs = regions.length > 0 ? regions : ((basePrefs?.regions as string[]) ?? []);
 
-      const tenders = await getRelevantTendersForUser(user.id, searchPrefs, 5);
+      const tenders = await searchTendersByText({ categories: searchCats, regions: searchRegs, limit: 5 });
 
       if (tenders.length > 0) {
         const catStr = categories.length > 0 ? categories.join(', ') : 'по вашим фильтрам';

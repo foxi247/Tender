@@ -97,7 +97,7 @@ export async function handleCallbackQuery(query: TelegramCallbackQuery): Promise
     const preferences = await getUserPreferences(user.id);
     if (!preferences) return;
 
-    const tenders = await getRelevantTendersForUser(user.id, preferences, 10);
+    const { tenders } = await getRelevantTendersForUser(user.id, preferences, 10);
     if (tenders.length === 0) return;
 
     await sendMultipleTenderCards(chatId, tenders.slice(3), 7);

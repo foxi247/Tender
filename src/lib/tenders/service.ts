@@ -84,10 +84,9 @@ export async function getRelevantTendersForUser(
   userId: string,
   preferences: UserPreferences,
   limit = 10
-): Promise<ScoredTender[]> {
+): Promise<{ tenders: ScoredTender[]; usedFallback: boolean }> {
   const supabase = createServiceClient();
 
-  // Get hidden tender IDs for this user
   const { data: hiddenActions } = await supabase
     .from('user_tender_actions')
     .select('tender_id')
@@ -95,7 +94,6 @@ export async function getRelevantTendersForUser(
     .eq('action_type', 'hidden');
 
   const hiddenIds = (hiddenActions ?? []).map((a) => a.tender_id);
-
   const preferredSources = (preferences.preferred_sources as string[] | undefined) ?? [];
 
   const buildQuery = (withSourceFilter: boolean) => {
@@ -117,18 +115,70 @@ export async function getRelevantTendersForUser(
   };
 
   let { data: tenders, error } = await buildQuery(true);
+  let usedFallback = false;
 
-  // If source filter returned nothing, fall back to all platforms (the RSS feeds may not have data yet)
+  // If source filter returned nothing, fall back to all platforms
   if (!error && tenders && tenders.length === 0 && preferredSources.length > 0) {
     const fallback = await buildQuery(false);
     tenders = fallback.data;
     error = fallback.error;
+    usedFallback = true;
   }
 
-  if (error || !tenders) return [];
+  if (error || !tenders) return { tenders: [], usedFallback };
 
   const scored = scoreTenders(tenders, preferences);
-  return scored.slice(0, limit);
+  return { tenders: scored.slice(0, limit), usedFallback };
+}
+
+/**
+ * Full-text search by category keywords and/or region — ignores source filter.
+ * Used for AI chat "найди тендеры по бетону в Дагестане" queries.
+ */
+export async function searchTendersByText(params: {
+  categories?: string[];
+  regions?: string[];
+  limit?: number;
+}): Promise<ScoredTender[]> {
+  const supabase = createServiceClient();
+  const { categories = [], regions = [], limit = 10 } = params;
+
+  let query = supabase
+    .from('tenders')
+    .select('*')
+    .eq('status', 'active')
+    .gte('published_at', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString())
+    .order('published_at', { ascending: false })
+    .limit(200);
+
+  // Filter by category if specified (DB column exact match or title ilike)
+  if (categories.length > 0) {
+    // Use OR: category IN (...) OR title ilike any
+    const catFilter = categories.map((c) => `category.eq.${c}`).join(',');
+    const titleFilter = categories.map((c) => `title.ilike.%${c}%`).join(',');
+    query = query.or(`${catFilter},${titleFilter}`);
+  }
+
+  // Filter by region if specified
+  if (regions.length > 0) {
+    const regFilter = regions.map((r) => `region.ilike.%${r}%`).join(',');
+    query = query.or(regFilter);
+  }
+
+  const { data, error } = await query;
+  if (error || !data) return [];
+
+  // Return as ScoredTender with dummy score (sorted by date)
+  return data.slice(0, limit).map((t) => ({
+    ...t,
+    score: 50,
+    score_reasons: [
+      ...(categories.length > 0 ? [`Категория: ${categories.join(', ')}`] : []),
+      ...(regions.length > 0 ? [`Регион: ${regions.join(', ')}`] : []),
+    ],
+    ai_summary: null,
+    ai_why_recommended: null,
+  }));
 }
 
 export async function upsertTender(tender: Omit<Tender, 'id' | 'created_at' | 'updated_at'>): Promise<Tender | null> {

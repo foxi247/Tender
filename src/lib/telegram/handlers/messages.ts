@@ -125,7 +125,7 @@ async function handleSearchIntent(
       keywords: [...((preferences.keywords as string[]) ?? []), ...keywords],
       max_budget: maxBudget ?? preferences.max_budget,
     };
-    tenders = await getRelevantTendersForUser(userId, searchPrefs, 5);
+    ({ tenders } = await getRelevantTendersForUser(userId, searchPrefs, 5));
   } else {
     // Fallback: text search
     const result = await getTenders({

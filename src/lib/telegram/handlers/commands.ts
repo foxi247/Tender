@@ -57,7 +57,7 @@ export async function handleToday(message: TelegramMessage): Promise<void> {
 
   await sendMessage(chat.id, '🔍 _Ищу актуальные тендеры\\.\\.\\._', {});
 
-  const tenders = await getRelevantTendersForUser(user.id, preferences, 5);
+  const { tenders, usedFallback } = await getRelevantTendersForUser(user.id, preferences, 5);
 
   if (tenders.length === 0) {
     const { getTenderStats } = await import('@/lib/tenders/service');
@@ -72,7 +72,8 @@ export async function handleToday(message: TelegramMessage): Promise<void> {
     return;
   }
 
-  await sendMessage(chat.id, `📋 *Найдено ${tenders.length} тендер\\(ов\\)*`, {});
+  const fallbackNote = usedFallback ? '\n_⚠️ Выбранные площадки ещё не синхронизированы — показываем из доступных источников_\n' : '';
+  await sendMessage(chat.id, `📋 *Найдено ${tenders.length} тендер\\(ов\\)*${fallbackNote ? `\n${fallbackNote}` : ''}`, {});
   await sendMultipleTenderCards(chat.id, tenders);
 
   await logBotEvent(user.id, 'command_today', { count: tenders.length });

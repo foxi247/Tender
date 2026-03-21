@@ -42,7 +42,7 @@ async function sendDigestToSingleUser(
   const preferences = await getUserPreferences(userId);
   if (!preferences) return 'skipped';
 
-  const tenders = await getRelevantTendersForUser(userId, preferences, 5);
+  const { tenders } = await getRelevantTendersForUser(userId, preferences, 5);
   if (tenders.length === 0) {
     await recordDigest(userId, 0, {}, 'skipped', 'No relevant tenders');
     return 'skipped';

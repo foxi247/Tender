@@ -10,7 +10,17 @@ if (!SUPABASE_URL || !SUPABASE_KEY) {
   process.exit(1);
 }
 
-const RSS_URL = 'https://bicotender.ru/rss';
+// Multiple RSS feeds: bicotender (main + category pages) + РТС-тендер
+const RSS_FEEDS = [
+  { url: 'https://bicotender.ru/rss', source: 'bicotender' },
+  // Bicotender category-filtered pages (same aggregator, broader coverage per keyword)
+  { url: 'https://bicotender.ru/rss?cat=building_materials', source: 'bicotender' },
+  { url: 'https://bicotender.ru/rss?cat=construction', source: 'bicotender' },
+  // РТС-тендер public RSS
+  { url: 'https://www.rts-tender.ru/rss/tender-list.aspx', source: 'rts' },
+  // ЗаказГосударства (aggregator, free RSS)
+  { url: 'https://zakaz.gov.ru/zakaz/rss/pub', source: 'zakupki' },
+];
 
 const CONSTRUCTION_KEYWORDS = [
   'бетон', 'железобетон', 'жби',
@@ -174,19 +184,23 @@ function parseRSS(xml) {
   return items;
 }
 
-function mapItem(item) {
+function mapItem(item, feedSource = 'bicotender') {
   const { title, link, description, category, pubDate } = item;
 
   if (!isRelevant(title, category)) return null;
 
-  // Extract bicotender ID from URL: tender326284030.html → 326284030
-  const idMatch = link && link.match(/tender(\d+)/);
-  const bicotenderId = idMatch ? idMatch[1] : parseNumber(description);
-  if (!bicotenderId) return null;
+  // Extract ID from URL or description
+  const idMatch = link && (
+    link.match(/tender(\d+)/) ||     // bicotender
+    link.match(/[?&]id=(\d+)/) ||    // RTS / others
+    link.match(/\/(\d{15,})/)         // EIS 19-digit number
+  );
+  const tenderId = idMatch ? idMatch[1] : parseNumber(description);
+  if (!tenderId) return null;
 
   return {
-    external_id: `bicotender_${bicotenderId}`,
-    source: 'bicotender',
+    external_id: `${feedSource}_${tenderId}`,
+    source: feedSource,
     title,
     description: null,
     category: inferCategory(title),
@@ -203,13 +217,13 @@ function mapItem(item) {
   };
 }
 
-async function fetchRSS() {
-  const res = await fetch(RSS_URL, {
+async function fetchRSS(url) {
+  const res = await fetch(url, {
     headers: {
       'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36',
       'Accept': 'application/rss+xml, application/xml, text/xml, */*',
     },
-    signal: AbortSignal.timeout(30000),
+    signal: AbortSignal.timeout(20000),
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.text();
@@ -245,17 +259,38 @@ async function upsertToSupabase(tenders) {
 }
 
 async function main() {
-  console.log(`Starting bicotender.ru sync at ${new Date().toISOString()}`);
+  console.log(`Starting multi-platform sync at ${new Date().toISOString()}`);
 
-  const xml = await fetchRSS();
-  const items = parseRSS(xml);
-  console.log(`Fetched ${items.length} items from RSS`);
+  const allTenders = [];
+  const seen = new Set(); // dedup by external_id
 
-  const tenders = items.map(mapItem).filter(Boolean);
-  console.log(`Matched ${tenders.length} construction material tenders`);
+  for (const feed of RSS_FEEDS) {
+    try {
+      console.log(`Fetching ${feed.source}: ${feed.url}`);
+      const xml = await fetchRSS(feed.url);
+      const items = parseRSS(xml);
+      console.log(`  Got ${items.length} items`);
 
-  if (tenders.length > 0) {
-    const saved = await upsertToSupabase(tenders);
+      const mapped = items
+        .map(item => mapItem(item, feed.source))
+        .filter(Boolean)
+        .filter(t => {
+          if (seen.has(t.external_id)) return false;
+          seen.add(t.external_id);
+          return true;
+        });
+
+      console.log(`  Matched ${mapped.length} construction tenders`);
+      allTenders.push(...mapped);
+    } catch (err) {
+      console.warn(`  Failed: ${err.message} (skipping this feed)`);
+    }
+  }
+
+  console.log(`Total unique tenders: ${allTenders.length}`);
+
+  if (allTenders.length > 0) {
+    const saved = await upsertToSupabase(allTenders);
     console.log(`Saved ${saved} tenders to Supabase`);
   } else {
     console.log('No matching tenders in this batch (will try again next run)');
