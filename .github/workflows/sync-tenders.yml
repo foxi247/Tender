@@ -18,6 +18,9 @@ jobs:
         with:
           node-version: '20'
 
+      - name: Install script dependencies
+        run: npm install undici
+
       - name: Get Russian proxy
         run: |
           echo "Fetching Russian proxy list..."
