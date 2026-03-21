@@ -21,19 +21,32 @@ jobs:
       - name: Install script dependencies
         run: npm install undici
 
-      - name: Get Russian proxy
+      - name: Find working Russian proxy
         run: |
-          echo "Fetching Russian proxy list..."
-          PROXY=$(curl -s --max-time 15 \
-            "https://api.proxyscrape.com/v3/free-proxy-list/get?request=displayproxies&country=ru&protocol=http&proxy_format=ipport&format=text&timeout=10000&limit=10" \
-            | grep -v '^$' | head -1)
-          if [ -n "$PROXY" ]; then
-            echo "HTTP_PROXY=http://$PROXY" >> $GITHUB_ENV
-            echo "HTTPS_PROXY=http://$PROXY" >> $GITHUB_ENV
-            echo "Found proxy: $PROXY"
-          else
-            echo "No proxy found, will try direct connection"
+          TARGET="https://zakupki.gov.ru/epz/order/extendedsearch/rss.xml"
+          echo "Testing direct connection..."
+          CODE=$(curl -s --max-time 10 -o /dev/null -w "%{http_code}" "$TARGET" || echo "000")
+          echo "Direct: HTTP $CODE"
+          if [[ "$CODE" =~ ^(200|301|302|403)$ ]]; then
+            echo "Direct connection works, no proxy needed"
+            exit 0
           fi
+          echo "Direct failed. Fetching Russian HTTP proxies..."
+          PROXIES=$(curl -s --max-time 15 \
+            "https://api.proxyscrape.com/v3/free-proxy-list/get?request=displayproxies&country=ru&protocol=http&proxy_format=ipport&format=text&timeout=5000&limit=30" \
+            | grep -v '^$')
+          for PROXY in $PROXIES; do
+            echo "Testing http://$PROXY ..."
+            CODE=$(curl -s --max-time 8 --proxy "http://$PROXY" -o /dev/null -w "%{http_code}" "$TARGET" || echo "000")
+            echo "  -> HTTP $CODE"
+            if [[ "$CODE" =~ ^(200|301|302|403)$ ]]; then
+              echo "Working proxy found: $PROXY"
+              echo "HTTP_PROXY=http://$PROXY" >> $GITHUB_ENV
+              echo "HTTPS_PROXY=http://$PROXY" >> $GITHUB_ENV
+              exit 0
+            fi
+          done
+          echo "No working proxy found, will try direct anyway"
 
       - name: Sync tenders from zakupki.gov.ru
         env:
