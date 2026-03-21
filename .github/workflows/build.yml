@@ -1,0 +1,39 @@
+name: Build Check
+
+on:
+  push:
+    branches: ['claude/telegram-tender-bot-mvp-9akXF']
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      # Dummy values so Next.js build doesn't fail on missing NEXT_PUBLIC_ vars
+      NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder
+      NEXT_PUBLIC_APP_URL: https://tender-vert.vercel.app
+      SUPABASE_SERVICE_ROLE_KEY: placeholder
+      TELEGRAM_BOT_TOKEN: placeholder
+      TELEGRAM_WEBHOOK_SECRET: placeholder
+      AI_PROVIDER: rule-based
+      ADMIN_PASSWORD: placeholder
+      NEXTAUTH_SECRET: placeholder
+      CRON_SECRET: placeholder
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: TypeScript check
+        run: npx tsc --noEmit
+
+      - name: Build
+        run: npx next build
