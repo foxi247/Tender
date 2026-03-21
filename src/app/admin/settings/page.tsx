@@ -66,8 +66,16 @@ export default function SettingsPage() {
         setBotActionResult(data.success ? `✅ ${label}: webhook переустановлен на ${currentUrl}` : '❌ Ошибка');
       } else if (action === 'sync') {
         const res = await fetch('/api/sync');
-        const data = await res.json() as { ok: boolean; totalFetched: number; totalSaved: number };
-        setBotActionResult(data.ok ? `✅ Синхронизация: загружено ${data.totalFetched}, сохранено ${data.totalSaved}` : '❌ Ошибка синхронизации');
+        const data = await res.json() as { ok: boolean; totalFetched: number; totalSaved: number; errors?: string[] };
+        if (data.ok) {
+          setBotActionResult(`✅ Синхронизация: загружено ${data.totalFetched}, сохранено ${data.totalSaved}${data.errors?.length ? ` (ошибок: ${data.errors.length})` : ''}`);
+        } else {
+          setBotActionResult('❌ Ошибка синхронизации (zakupki.gov.ru может быть недоступен с серверов Vercel)');
+        }
+      } else if (action === 'seed') {
+        const res = await fetch('/api/seed', { method: 'POST' });
+        const data = await res.json() as { ok: boolean; saved: number; total: number };
+        setBotActionResult(data.ok ? `✅ Загружено ${data.saved} из ${data.total} тестовых тендеров в базу` : '❌ Ошибка загрузки');
       }
     } catch {
       setBotActionResult('❌ Ошибка выполнения действия');
@@ -191,7 +199,8 @@ export default function SettingsPage() {
       <div className="card p-6">
         <h2 className="font-semibold text-slate-900 mb-1">Управление ботом</h2>
         <p className="text-sm text-slate-400 mb-4">
-          Перезагрузка переустановит webhook на текущий домен. Синхронизация загрузит свежие тендеры с zakupki.gov.ru.
+          Перезагрузка переустановит webhook на текущий домен. Синхронизация загружает тендеры с zakupki.gov.ru
+          <span className="text-amber-600"> (может не работать с серверов Vercel — gov.ru часто блокирует иностранные IP)</span>.
         </p>
         <div className="flex flex-wrap gap-3">
           <button
@@ -207,6 +216,13 @@ export default function SettingsPage() {
             className="btn-secondary disabled:opacity-50"
           >
             {botAction === 'sync' ? '⏳ Загрузка...' : '🔃 Синхронизировать тендеры'}
+          </button>
+          <button
+            onClick={() => runBotAction('seed', 'Seed')}
+            disabled={botAction !== null}
+            className="btn-secondary disabled:opacity-50"
+          >
+            {botAction === 'seed' ? '⏳ Загрузка...' : '🌱 Загрузить тестовые тендеры'}
           </button>
         </div>
         {botActionResult && (
