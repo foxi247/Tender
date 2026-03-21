@@ -1,16 +1,16 @@
-// GitHub Actions sync script: zakupki.gov.ru → Supabase
-// Runs outside Vercel (no 10s timeout, different IP)
+// GitHub Actions sync script: zakupki.gov.ru RSS → Supabase
+// Uses RSS feed instead of JSON API (better availability from foreign IPs)
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 const BASE_URL = 'https://zakupki.gov.ru';
-const SEARCH_URL = `${BASE_URL}/epz/order/extendedsearch/results.json`;
+const RSS_URL = `${BASE_URL}/epz/order/extendedsearch/rss.xml`;
 
 const SEARCH_CATEGORIES = [
   'бетон', 'ракушечник', 'кирпич', 'цемент', 'щебень',
   'арматура', 'газобетон', 'песок', 'стройматериал',
-  'асфальт', 'щебень', 'трубы пнд', 'металлочерепица',
+  'асфальт', 'трубы пнд', 'металлочерепица',
 ];
 
 const CATEGORY_KEYWORDS = [
@@ -38,19 +38,128 @@ function inferCategory(title) {
   return 'Стройматериалы';
 }
 
-function inferLawType(purchaseTypeName) {
-  if (!purchaseTypeName) return 'other';
-  const lower = purchaseTypeName.toLowerCase();
-  if (lower.includes('44') || lower.includes('электронный аукцион')) return '44-FZ';
-  if (lower.includes('223')) return '223-FZ';
+// Simple RSS/XML parser without external dependencies
+function getXmlField(xml, tag) {
+  const cdataRe = new RegExp(`<${tag}[^>]*><!\\[CDATA\\[([\\s\\S]*?)\\]\\]><\\/${tag}>`, 'i');
+  const plainRe = new RegExp(`<${tag}[^>]*>([^<]*)<\\/${tag}>`, 'i');
+  const m = cdataRe.exec(xml) || plainRe.exec(xml);
+  return m ? m[1].trim() : null;
+}
+
+function getLinkFromItem(itemXml) {
+  // <link> in RSS 2.0 can be tricky — try plain text first, then href attribute
+  const plainRe = /<link>([^<]+)<\/link>/i;
+  const hrefRe = /<link[^>]+href="([^"]+)"/i;
+  const m = plainRe.exec(itemXml) || hrefRe.exec(itemXml);
+  return m ? m[1].trim() : null;
+}
+
+function parseRSSItems(xml) {
+  const items = [];
+  const itemRegex = /<item>([\s\S]*?)<\/item>/g;
+  let match;
+
+  while ((match = itemRegex.exec(xml)) !== null) {
+    const itemXml = match[1];
+
+    const title = getXmlField(itemXml, 'title');
+    const link = getLinkFromItem(itemXml) || getXmlField(itemXml, 'link');
+    const pubDate = getXmlField(itemXml, 'pubDate');
+    const description = getXmlField(itemXml, 'description');
+
+    if (!title || !link) continue;
+
+    // Extract purchase number from URL: regNumber=0123456789012345678
+    const numMatch = link.match(/regNumber=([^&\s]+)/);
+    const purchaseNumber = numMatch ? numMatch[1] : null;
+
+    items.push({ title, link, pubDate, description, purchaseNumber });
+  }
+
+  return items;
+}
+
+function parseDescriptionField(description, ...labels) {
+  if (!description) return null;
+  for (const label of labels) {
+    // Strip HTML tags and look for label: value pattern
+    const clean = description.replace(/<[^>]+>/g, ' ');
+    const re = new RegExp(`${label}[:\\s]+([^\\n<]+)`, 'i');
+    const m = re.exec(clean);
+    if (m) return m[1].trim();
+  }
+  return null;
+}
+
+function parseBudget(description) {
+  if (!description) return null;
+  const clean = description.replace(/<[^>]+>/g, ' ');
+  // Match "1 234 567,89 Руб" or "1234567.89"
+  const m = clean.match(/[Нн]ачальн[а-я]+\s+(?:[а-яА-Я\s(]+)?\s*[\s:]+\s*([\d\s]+[,.]?\d*)\s*[Рр]уб/);
+  if (m) {
+    const num = parseFloat(m[1].replace(/\s/g, '').replace(',', '.'));
+    return isNaN(num) ? null : num;
+  }
+  return null;
+}
+
+function parseDeadline(description) {
+  if (!description) return null;
+  const clean = description.replace(/<[^>]+>/g, ' ');
+  // Look for "Окончание подачи заявок: 15.01.2026 10:00"
+  const m = clean.match(/[Оо]кончани[ея][^:]*:\s*(\d{2})\.(\d{2})\.(\d{4})(?:\s+(\d{2}):(\d{2}))?/);
+  if (m) {
+    const [, d, mo, y, h = '00', min = '00'] = m;
+    return new Date(`${y}-${mo}-${d}T${h}:${min}:00`).toISOString();
+  }
+  return null;
+}
+
+function parseRegion(description) {
+  if (!description) return null;
+  const clean = description.replace(/<[^>]+>/g, ' ');
+  const m = clean.match(/[Мм]есто[^:]*:\s*([^\n,]+)/);
+  return m ? m[1].trim() : null;
+}
+
+function parseLawType(description, link) {
+  const text = ((description || '') + (link || '')).toLowerCase();
+  if (text.includes('ea44') || text.includes('zk44') || text.includes('44')) return '44-FZ';
+  if (text.includes('zk223') || text.includes('223')) return '223-FZ';
   return 'other';
+}
+
+function mapItem(item) {
+  if (!item.purchaseNumber || !item.title) return null;
+
+  return {
+    external_id: `zakupki_${item.purchaseNumber}`,
+    title: item.title,
+    description: null,
+    category: inferCategory(item.title),
+    region: parseRegion(item.description),
+    buyer_name: parseDescriptionField(item.description, 'Заказчик', 'Организация'),
+    law_type: parseLawType(item.description, item.link),
+    budget: parseBudget(item.description),
+    published_at: item.pubDate ? new Date(item.pubDate).toISOString() : new Date().toISOString(),
+    deadline_at: parseDeadline(item.description),
+    source_url: item.link,
+    docs_url: null,
+    status: 'active',
+    raw_payload: {
+      title: item.title,
+      link: item.link,
+      pubDate: item.pubDate,
+      purchaseNumber: item.purchaseNumber,
+    },
+  };
 }
 
 async function fetchCategory(category) {
   const publishedAfterDate = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
   const dateStr = publishedAfterDate.toISOString().split('T')[0].split('-').reverse().join('.');
 
-  const url = new URL(SEARCH_URL);
+  const url = new URL(RSS_URL);
   url.searchParams.set('searchString', category);
   url.searchParams.set('morphology', 'on');
   url.searchParams.set('pageNumber', '1');
@@ -70,12 +179,9 @@ async function fetchCategory(category) {
   const res = await fetch(url.toString(), {
     headers: {
       'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      'Accept': 'application/json, text/javascript, */*; q=0.01',
-      'Accept-Language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
-      'Accept-Encoding': 'gzip, deflate, br',
+      'Accept': 'application/rss+xml, application/xml, text/xml, */*',
+      'Accept-Language': 'ru-RU,ru;q=0.9',
       'Referer': 'https://zakupki.gov.ru/epz/order/extendedsearch/search.html',
-      'X-Requested-With': 'XMLHttpRequest',
-      'Connection': 'keep-alive',
     },
     signal: AbortSignal.timeout(30000),
   });
@@ -84,35 +190,10 @@ async function fetchCategory(category) {
     throw new Error(`HTTP ${res.status} for category "${category}"`);
   }
 
-  const data = await res.json();
-  return data.lots ?? [];
-}
+  const xml = await res.text();
+  console.log(`     → Response size: ${xml.length} bytes`);
 
-function mapLot(lot) {
-  const purchaseNumber = lot.purchaseNumber ?? lot.id;
-  if (!purchaseNumber || !lot.subject) return null;
-
-  const regionName = lot.lot?.regionNames?.[0] ?? null;
-  const sourceUrl = lot.href
-    ? (lot.href.startsWith('http') ? lot.href : `${BASE_URL}${lot.href}`)
-    : null;
-
-  return {
-    external_id: `zakupki_${purchaseNumber}`,
-    title: lot.subject,
-    description: null,
-    category: inferCategory(lot.subject),
-    region: regionName,
-    buyer_name: lot.customer?.fullName ?? null,
-    law_type: inferLawType(lot.purchaseTypeName),
-    budget: lot.initialSum ?? null,
-    published_at: lot.publishDate ? new Date(lot.publishDate).toISOString() : new Date().toISOString(),
-    deadline_at: lot.auctionDate ? new Date(lot.auctionDate).toISOString() : null,
-    source_url: sourceUrl,
-    docs_url: null,
-    status: 'active',
-    raw_payload: lot,
-  };
+  return parseRSSItems(xml);
 }
 
 async function upsertToSupabase(tenders) {
@@ -143,8 +224,9 @@ async function main() {
     process.exit(1);
   }
 
-  console.log(`🚀 Starting sync at ${new Date().toISOString()}`);
-  console.log(`📡 Connecting to: ${SUPABASE_URL}`);
+  console.log(`🚀 Starting RSS sync at ${new Date().toISOString()}`);
+  console.log(`📡 Supabase: ${SUPABASE_URL}`);
+  console.log(`📰 Source: ${RSS_URL}`);
 
   let totalFetched = 0;
   let totalSaved = 0;
@@ -152,20 +234,22 @@ async function main() {
 
   for (const category of SEARCH_CATEGORIES) {
     try {
-      console.log(`  🔍 Fetching: "${category}"`);
-      const lots = await fetchCategory(category);
-      console.log(`     → Got ${lots.length} lots`);
+      console.log(`  🔍 Fetching RSS: "${category}"`);
+      const items = await fetchCategory(category);
+      console.log(`     → Parsed ${items.length} items`);
 
-      const tenders = lots.map(mapLot).filter(Boolean);
+      const tenders = items.map(mapItem).filter(Boolean);
+      console.log(`     → Mapped ${tenders.length} tenders`);
+
       if (tenders.length > 0) {
         const saved = await upsertToSupabase(tenders);
         totalSaved += saved;
       }
 
-      totalFetched += lots.length;
+      totalFetched += items.length;
 
-      // Polite delay between requests (1 second)
-      await new Promise(r => setTimeout(r, 1000));
+      // Polite delay between requests
+      await new Promise(r => setTimeout(r, 1500));
     } catch (err) {
       const msg = `${category}: ${err.message}`;
       errors.push(msg);
@@ -176,10 +260,10 @@ async function main() {
   console.log(`\n✅ Sync complete:`);
   console.log(`   Fetched: ${totalFetched}`);
   console.log(`   Saved:   ${totalSaved}`);
+
   if (errors.length > 0) {
     console.log(`   Errors:  ${errors.length}`);
     errors.forEach(e => console.log(`     - ${e}`));
-    // Exit with error only if ALL categories failed
     if (errors.length === SEARCH_CATEGORIES.length) {
       process.exit(1);
     }
