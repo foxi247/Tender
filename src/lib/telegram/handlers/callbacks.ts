@@ -1,6 +1,21 @@
-import { answerCallbackQuery, sendMessage, sendMultipleTenderCards } from '@/lib/telegram/bot';
-import { tenderActionsKeyboard } from '@/lib/telegram/keyboards';
-import { getUserByTelegramId, getUserPreferences } from '@/lib/users/service';
+import { answerCallbackQuery, sendMessage, sendMultipleTenderCards, editMessageText } from '@/lib/telegram/bot';
+import {
+  tenderActionsKeyboard,
+  filterMainMenuKeyboard,
+  filterCategoriesKeyboard,
+  filterRegionsKeyboard,
+  filterBudgetKeyboard,
+  FILTER_CATEGORIES,
+  FILTER_REGIONS,
+} from '@/lib/telegram/keyboards';
+import {
+  formatFilterMenu,
+  formatFilterCategories,
+  formatFilterRegions,
+  formatFilterBudget,
+  formatFilterSaved,
+} from '@/lib/telegram/messages';
+import { getUserByTelegramId, getUserPreferences, updateUserPreferences } from '@/lib/users/service';
 import { toggleTenderAction, addTenderAction } from '@/lib/favorites/service';
 import { getTenderById, getRelevantTendersForUser } from '@/lib/tenders/service';
 import { logBotEvent } from './logger';
@@ -81,6 +96,119 @@ export async function handleCallbackQuery(query: TelegramCallbackQuery): Promise
     if (tenders.length === 0) return;
 
     await sendMultipleTenderCards(chatId, tenders.slice(3), 7);
+    return;
+  }
+
+  // ── Filter navigation ──────────────────────────────────────────────────────
+
+  if (data === 'fm' || data === 'fc' || data === 'fr' || data === 'fb') {
+    await answerCallbackQuery(queryId);
+    const prefs = await getUserPreferences(user.id);
+    const categories = (prefs?.categories as string[]) ?? [];
+    const regions = (prefs?.regions as string[]) ?? [];
+    const maxBudget = prefs?.max_budget ?? null;
+    const msgId = message?.message_id;
+    if (!msgId) return;
+
+    if (data === 'fm') {
+      await editMessageText(chatId, msgId, formatFilterMenu(categories, regions, maxBudget), {
+        reply_markup: filterMainMenuKeyboard(categories, regions, maxBudget),
+      });
+    } else if (data === 'fc') {
+      await editMessageText(chatId, msgId, formatFilterCategories(categories.length), {
+        reply_markup: filterCategoriesKeyboard(categories),
+      });
+    } else if (data === 'fr') {
+      await editMessageText(chatId, msgId, formatFilterRegions(regions.length), {
+        reply_markup: filterRegionsKeyboard(regions),
+      });
+    } else {
+      await editMessageText(chatId, msgId, formatFilterBudget(maxBudget), {
+        reply_markup: filterBudgetKeyboard(maxBudget),
+      });
+    }
+    return;
+  }
+
+  // Toggle category: fct_N
+  if (data.startsWith('fct_')) {
+    const idx = parseInt(data.slice(4), 10);
+    const cat = FILTER_CATEGORIES[idx];
+    if (!cat) { await answerCallbackQuery(queryId); return; }
+
+    const prefs = await getUserPreferences(user.id);
+    const current = (prefs?.categories as string[]) ?? [];
+    const updated = current.includes(cat)
+      ? current.filter((c) => c !== cat)
+      : [...current, cat];
+
+    await updateUserPreferences(user.id, { categories: updated });
+    await answerCallbackQuery(queryId, updated.includes(cat) ? `✅ ${cat}` : `❌ ${cat} убрана`);
+
+    const msgId = message?.message_id;
+    if (msgId) {
+      await editMessageText(chatId, msgId, formatFilterCategories(updated.length), {
+        reply_markup: filterCategoriesKeyboard(updated),
+      });
+    }
+    return;
+  }
+
+  // Toggle region: frt_N
+  if (data.startsWith('frt_')) {
+    const idx = parseInt(data.slice(4), 10);
+    const reg = FILTER_REGIONS[idx];
+    if (!reg) { await answerCallbackQuery(queryId); return; }
+
+    const prefs = await getUserPreferences(user.id);
+    const current = (prefs?.regions as string[]) ?? [];
+    const updated = current.includes(reg)
+      ? current.filter((r) => r !== reg)
+      : [...current, reg];
+
+    await updateUserPreferences(user.id, { regions: updated });
+    await answerCallbackQuery(queryId, updated.includes(reg) ? `✅ ${reg}` : `❌ ${reg} убран`);
+
+    const msgId = message?.message_id;
+    if (msgId) {
+      await editMessageText(chatId, msgId, formatFilterRegions(updated.length), {
+        reply_markup: filterRegionsKeyboard(updated),
+      });
+    }
+    return;
+  }
+
+  // Set max budget: fbmax_N
+  if (data.startsWith('fbmax_')) {
+    const value = parseInt(data.slice(6), 10);
+    const maxBudget = value === 0 ? null : value;
+    await updateUserPreferences(user.id, { max_budget: maxBudget });
+    await answerCallbackQuery(queryId, maxBudget ? `✅ Бюджет: до ${maxBudget / 1_000_000 >= 1 ? `${maxBudget / 1_000_000} млн` : `${maxBudget / 1_000} тыс`}` : '✅ Без лимита');
+
+    const msgId = message?.message_id;
+    if (msgId) {
+      await editMessageText(chatId, msgId, formatFilterBudget(maxBudget), {
+        reply_markup: filterBudgetKeyboard(maxBudget),
+      });
+    }
+    return;
+  }
+
+  // Save and close: fd
+  if (data === 'fd') {
+    await answerCallbackQuery(queryId, '✅ Фильтры сохранены!');
+    const prefs = await getUserPreferences(user.id);
+    const categories = (prefs?.categories as string[]) ?? [];
+    const regions = (prefs?.regions as string[]) ?? [];
+    const maxBudget = prefs?.max_budget ?? null;
+
+    const msgId = message?.message_id;
+    if (msgId) {
+      await editMessageText(chatId, msgId, formatFilterSaved(categories, regions, maxBudget), {
+        reply_markup: { inline_keyboard: [] },
+      });
+    }
+    await logBotEvent(user.id, 'filter_saved', { categories, regions, maxBudget });
     return;
   }
 

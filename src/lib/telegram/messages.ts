@@ -155,6 +155,72 @@ export function formatMarketAnalysis(stats: MarketStats, aiAnalysis: string, cat
   return lines.join('\n');
 }
 
+export function formatFilterMenu(categories: string[], regions: string[], maxBudget: number | null): string {
+  const cats = categories.length > 0 ? escapeMarkdown(categories.join(', ')) : '_не выбраны_';
+  const regs = regions.length > 0 ? escapeMarkdown(regions.join(', ')) : '_не выбраны_';
+  const budget = maxBudget ? `до ${escapeMarkdown(formatBudgetShort(maxBudget))}` : '_без ограничений_';
+
+  return [
+    '⚙️ *Настройка фильтров*',
+    '',
+    `📦 *Категории:* ${cats}`,
+    `📍 *Регионы:* ${regs}`,
+    `💰 *Бюджет:* ${budget}`,
+    '',
+    'Нажмите кнопку для изменения параметра:',
+  ].join('\n');
+}
+
+export function formatFilterCategories(selectedCount: number): string {
+  return [
+    '📦 *Выберите категории материалов*',
+    '',
+    `Выбрано: *${selectedCount}*`,
+    '_Нажмите для включения/отключения:_',
+  ].join('\n');
+}
+
+export function formatFilterRegions(selectedCount: number): string {
+  return [
+    '📍 *Выберите регионы*',
+    '',
+    `Выбрано: *${selectedCount}*`,
+    '_Нажмите для включения/отключения:_',
+  ].join('\n');
+}
+
+export function formatFilterBudget(currentMax: number | null): string {
+  const current = currentMax ? `до ${escapeMarkdown(formatBudgetShort(currentMax))}` : '_без ограничений_';
+  return [
+    '💰 *Максимальный бюджет тендера*',
+    '',
+    `Текущий лимит: ${current}`,
+    '_Выберите верхнюю границу:_',
+  ].join('\n');
+}
+
+export function formatFilterSaved(categories: string[], regions: string[], maxBudget: number | null): string {
+  const cats = categories.length > 0 ? escapeMarkdown(categories.join(', ')) : '_все категории_';
+  const regs = regions.length > 0 ? escapeMarkdown(regions.join(', ')) : '_все регионы_';
+  const budget = maxBudget ? `до ${escapeMarkdown(formatBudgetShort(maxBudget))}` : '_без ограничений_';
+
+  return [
+    '✅ *Фильтры сохранены\\!*',
+    '',
+    `📦 *Категории:* ${cats}`,
+    `📍 *Регионы:* ${regs}`,
+    `💰 *Бюджет:* ${budget}`,
+    '',
+    '_Подборки будут учитывать ваши настройки\\._',
+  ].join('\n');
+}
+
+function formatBudgetShort(budget: number): string {
+  if (budget >= 1_000_000) return `${budget / 1_000_000} млн`;
+  if (budget >= 1_000) return `${budget / 1_000} тыс`;
+  return `${budget} руб`;
+}
+
 export function formatUnknownMessage(): string {
   return `🤔 *Не совсем понял ваш запрос*
 

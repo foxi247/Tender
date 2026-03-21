@@ -1,10 +1,11 @@
 import { sendMessage, sendMultipleTenderCards } from '@/lib/telegram/bot';
-import { mainMenuKeyboard } from '@/lib/telegram/keyboards';
+import { mainMenuKeyboard, filterMainMenuKeyboard } from '@/lib/telegram/keyboards';
 import {
   formatWelcomeMessage,
   formatHelpMessage,
   formatNoTendersMessage,
   formatMarketAnalysis,
+  formatFilterMenu,
 } from '@/lib/telegram/messages';
 import { upsertUser, getUserByTelegramId, getUserPreferences } from '@/lib/users/service';
 import { getRelevantTendersForUser, getMarketStats } from '@/lib/tenders/service';
@@ -168,22 +169,18 @@ export async function handleFilters(message: TelegramMessage): Promise<void> {
   if (!from) return;
 
   const user = await getUserByTelegramId(String(from.id));
-  if (!user) return;
+  if (!user) {
+    await sendMessage(chat.id, 'Пожалуйста, отправьте /start для начала работы\\.', {});
+    return;
+  }
 
   const prefs = await getUserPreferences(user.id);
   const categories = (prefs?.categories as string[]) ?? [];
   const regions = (prefs?.regions as string[]) ?? [];
+  const maxBudget = prefs?.max_budget ?? null;
 
-  const text = [
-    '⚙️ *Ваши фильтры*',
-    '',
-    `*Категории:* ${categories.length > 0 ? categories.map(c => `\`${c}\``).join(', ') : '_не указаны_'}`,
-    `*Регионы:* ${regions.length > 0 ? regions.map(r => `\`${r}\``).join(', ') : '_не указаны_'}`,
-    `*Бюджет:* ${prefs?.min_budget ? `от ${prefs.min_budget / 1000}к` : ''} ${prefs?.max_budget ? `до ${prefs.max_budget / 1_000_000}млн` : '_без ограничений_'}`,
-    '',
-    '_Для изменения фильтров воспользуйтесь веб\\-панелью управления\\._',
-  ].join('\n');
-
-  await sendMessage(chat.id, text, {});
+  await sendMessage(chat.id, formatFilterMenu(categories, regions, maxBudget), {
+    reply_markup: filterMainMenuKeyboard(categories, regions, maxBudget),
+  });
   await logBotEvent(user.id, 'command_filters', {});
 }
