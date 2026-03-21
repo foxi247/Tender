@@ -2,23 +2,24 @@ name: Sync Tenders
 
 on:
   schedule:
-    # Every 30 minutes
-    - cron: '*/30 * * * *'
+    # Every 2 hours
+    - cron: '0 */2 * * *'
   workflow_dispatch: # Allow manual trigger from GitHub UI
 
 jobs:
   sync:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
 
     steps:
-      - name: Call sync API (all slots)
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Sync tenders from zakupki.gov.ru → Supabase
         env:
-          APP_URL: ${{ secrets.APP_URL }}
-          CRON_SECRET: ${{ secrets.CRON_SECRET }}
-        run: |
-          for slot in $(seq 0 12); do
-            echo "Syncing slot $slot..."
-            curl -sf "${APP_URL}/api/sync?slot=${slot}&secret=${CRON_SECRET}" || echo "Slot $slot failed"
-            sleep 2
-          done
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: node .github/scripts/sync-tenders.js
