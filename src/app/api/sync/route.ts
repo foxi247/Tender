@@ -4,139 +4,175 @@ import { logger } from '@/lib/logger';
 import { cookies } from 'next/headers';
 
 const CRON_SECRET = process.env.CRON_SECRET;
+const RSS_URL = 'https://bicotender.ru/rss';
 
-// One category per call → fits in Vercel's 10s limit
-// cron-job.org calls ?slot=0, ?slot=1 ... ?slot=12 every 30 min
-const SEARCH_CATEGORIES = [
-  'бетон', 'ракушечник', 'кирпич', 'цемент', 'щебень',
-  'арматура', 'газобетон', 'песок', 'стройматериал',
-  'асфальт', 'трубы пнд', 'металлочерепица', 'утеплитель',
+const CONSTRUCTION_KEYWORDS = [
+  'бетон', 'железобетон', 'жби',
+  'ракушечник', 'ракушка',
+  'кирпич',
+  'цемент',
+  'щебень', 'гравий',
+  'арматура',
+  'газобетон', 'газоблок', 'пеноблок',
+  'песок строительный', 'речной песок', 'карьерный песок',
+  'стройматериал',
+  'асфальт', 'асфальтобетон',
+  'труб пнд',
+  'металлочерепица',
+  'профнастил',
+  'утеплитель', 'минвата',
 ];
 
-const CATEGORY_MAP = [
-  { keywords: ['бетон', 'железобетон', 'жб'], category: 'Бетон' },
-  { keywords: ['ракушечник', 'ракушка'], category: 'Ракушечник' },
-  { keywords: ['кирпич'], category: 'Кирпич' },
-  { keywords: ['цемент'], category: 'Цемент' },
-  { keywords: ['щебень', 'гравий'], category: 'Щебень' },
-  { keywords: ['песок'], category: 'Песок' },
-  { keywords: ['арматура'], category: 'Арматура' },
-  { keywords: ['газобетон', 'газоблок', 'пеноблок'], category: 'Газобетон' },
-  { keywords: ['кровля', 'металлочерепица', 'профнастил'], category: 'Кровля' },
-  { keywords: ['утеплитель', 'минвата', 'пенополистирол'], category: 'Утеплитель' },
-  { keywords: ['асфальт'], category: 'Асфальт' },
-  { keywords: ['труба', 'трубопровод'], category: 'Трубы' },
-  { keywords: ['стройматериал'], category: 'Стройматериалы' },
+const CONSTRUCTION_CATEGORIES = [
+  'строительные материалы',
+  'строительство',
+  'дороги, мосты',
+  'ремонтные и строительные',
 ];
+
+const CATEGORY_MAP: Array<{ kw: string[]; cat: string }> = [
+  { kw: ['бетон', 'железобетон', 'жби'], cat: 'Бетон' },
+  { kw: ['ракушечник', 'ракушка'], cat: 'Ракушечник' },
+  { kw: ['кирпич'], cat: 'Кирпич' },
+  { kw: ['цемент'], cat: 'Цемент' },
+  { kw: ['щебень', 'гравий'], cat: 'Щебень' },
+  { kw: ['арматура'], cat: 'Арматура' },
+  { kw: ['газобетон', 'газоблок', 'пеноблок'], cat: 'Газобетон' },
+  { kw: ['песок'], cat: 'Песок' },
+  { kw: ['металлочерепица', 'профнастил'], cat: 'Кровля' },
+  { kw: ['утеплитель', 'минвата'], cat: 'Утеплитель' },
+  { kw: ['асфальт'], cat: 'Асфальт' },
+  { kw: ['труб'], cat: 'Трубы' },
+];
+
+function isRelevant(title: string, category: string | null): boolean {
+  const t = title.toLowerCase();
+  const c = (category || '').toLowerCase();
+  return CONSTRUCTION_KEYWORDS.some(kw => t.includes(kw))
+    || CONSTRUCTION_CATEGORIES.some(kw => c.includes(kw));
+}
 
 function inferCategory(title: string): string {
   const lower = title.toLowerCase();
-  for (const { keywords, category } of CATEGORY_MAP) {
-    if (keywords.some(kw => lower.includes(kw))) return category;
+  for (const { kw, cat } of CATEGORY_MAP) {
+    if (kw.some(k => lower.includes(k))) return cat;
   }
   return 'Стройматериалы';
 }
 
-function inferLawType(purchaseTypeName?: string): '44-FZ' | '223-FZ' | 'commercial' | 'other' {
-  if (!purchaseTypeName) return 'other';
-  const lower = purchaseTypeName.toLowerCase();
-  if (lower.includes('44') || lower.includes('электронный аукцион')) return '44-FZ';
-  if (lower.includes('223')) return '223-FZ';
+function getXmlField(xml: string, tag: string): string | null {
+  const cdata = new RegExp(`<${tag}[^>]*><!\\[CDATA\\[([\\s\\S]*?)\\]\\]><\\/${tag}>`, 'i');
+  const plain = new RegExp(`<${tag}[^>]*>([^<]*)<\\/${tag}>`, 'i');
+  const m = cdata.exec(xml) || plain.exec(xml);
+  return m ? m[1].trim() : null;
+}
+
+function parseBudget(description: string | null): number | null {
+  const clean = (description || '').replace(/&lt;[^&]*&gt;/g, ' ').replace(/<[^>]+>/g, ' ');
+  const m = clean.match(/Цена:\s*([\d\s]+[,.]?\d*)/i);
+  if (!m) return null;
+  const num = parseFloat(m[1].replace(/\s/g, '').replace(',', '.'));
+  return isNaN(num) || num === 0 ? null : num;
+}
+
+function parseDeadline(description: string | null): string | null {
+  const clean = (description || '').replace(/&lt;[^&]*&gt;/g, ' ').replace(/<[^>]+>/g, ' ');
+  const m = clean.match(/Окончание:\s*(\d{4}-\d{2}-\d{2}[\sT]\d{2}:\d{2}:\d{2})/i);
+  if (!m) return null;
+  try { return new Date(m[1]).toISOString(); } catch { return null; }
+}
+
+function parseRegion(description: string | null): string | null {
+  const clean = (description || '').replace(/&lt;[^&]*&gt;/g, ' ').replace(/<[^>]+>/g, ' ');
+  const m = clean.match(/Регион:\s*([^\n<]+)/i);
+  if (!m) return null;
+  const parts = m[1].split('/').map((s: string) => s.trim()).filter(Boolean);
+  return parts[parts.length - 1] || parts[0] || null;
+}
+
+function parseLawType(description: string | null): '44-FZ' | '223-FZ' | 'other' {
+  const clean = (description || '').replace(/<[^>]+>/g, ' ');
+  const type = clean.match(/Тип:\s*([^\n<&]+)/i)?.[1]?.toLowerCase() || '';
+  if (type.includes('аукцион') || type.includes('44')) return '44-FZ';
+  if (type.includes('223')) return '223-FZ';
   return 'other';
 }
 
-async function fetchLotsFromZakupki(keyword: string): Promise<Record<string, unknown>[]> {
-  const since = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
-  const dateStr = [
-    String(since.getDate()).padStart(2, '0'),
-    String(since.getMonth() + 1).padStart(2, '0'),
-    since.getFullYear(),
-  ].join('.');
+interface RSSItem {
+  title: string;
+  link: string | null;
+  description: string | null;
+  category: string | null;
+  pubDate: string | null;
+}
 
-  const url = new URL('https://zakupki.gov.ru/epz/order/extendedsearch/results.json');
-  url.searchParams.set('searchString', keyword);
-  url.searchParams.set('morphology', 'on');
-  url.searchParams.set('pageNumber', '1');
-  url.searchParams.set('recordsPerPage', '_50');
-  url.searchParams.set('sortBy', 'UPDATE_DATE');
-  url.searchParams.set('sortDirection', 'false');
-  url.searchParams.set('fz44', 'on');
-  url.searchParams.set('fz223', 'on');
-  url.searchParams.set('af', 'on');
-  url.searchParams.set('showLotsInfoHidden', 'false');
-  url.searchParams.set('updateDateFrom', dateStr);
+function parseRSS(xml: string): RSSItem[] {
+  const items: RSSItem[] = [];
+  const itemRe = /<item>([\s\S]*?)<\/item>/g;
+  let m: RegExpExecArray | null;
+  while ((m = itemRe.exec(xml)) !== null) {
+    const raw = m[1];
+    const title = getXmlField(raw, 'title');
+    const link = getXmlField(raw, 'link') || raw.match(/<link>([^<]+)<\/link>/)?.[1]?.trim() || null;
+    const description = getXmlField(raw, 'description');
+    const category = getXmlField(raw, 'category');
+    const pubDate = getXmlField(raw, 'pubDate');
+    if (!title) continue;
+    items.push({ title, link, description, category, pubDate });
+  }
+  return items;
+}
 
-  const res = await fetch(url.toString(), {
+async function runSync(): Promise<NextResponse> {
+  const startedAt = Date.now();
+  logger.info('Sync started from bicotender.ru RSS');
+
+  const res = await fetch(RSS_URL, {
     headers: {
       'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36',
-      'Accept': 'application/json, text/javascript, */*',
-      'Accept-Language': 'ru-RU,ru;q=0.9',
-      'Referer': 'https://zakupki.gov.ru/epz/order/extendedsearch/search.html',
-      'X-Requested-With': 'XMLHttpRequest',
+      'Accept': 'application/rss+xml, application/xml, text/xml, */*',
     },
-    signal: AbortSignal.timeout(8000),
+    signal: AbortSignal.timeout(20000),
   });
 
-  if (!res.ok) throw new Error(`zakupki HTTP ${res.status}`);
-  const data = await res.json() as { lots?: Record<string, unknown>[] };
-  return data.lots ?? [];
-}
+  if (!res.ok) throw new Error(`bicotender RSS HTTP ${res.status}`);
+  const xml = await res.text();
 
-async function runSync(slot: number): Promise<NextResponse> {
-  const keyword = SEARCH_CATEGORIES[slot % SEARCH_CATEGORIES.length];
-  const startedAt = Date.now();
-  logger.info('Sync started', { slot, keyword });
+  const items = parseRSS(xml);
+  const relevant = items.filter(i => isRelevant(i.title, i.category));
 
-  try {
-    const lots = await fetchLotsFromZakupki(keyword);
-    let saved = 0;
+  let saved = 0;
+  for (const item of relevant) {
+    const idMatch = item.link?.match(/tender(\d+)/);
+    const bicotenderId = idMatch?.[1];
+    if (!bicotenderId) continue;
 
-    for (const lot of lots) {
-      const purchaseNumber = lot.purchaseNumber ?? lot.id;
-      if (!purchaseNumber || !lot.subject) continue;
-
-      const lotData = lot.lot as Record<string, unknown> | undefined;
-      const customer = lot.customer as Record<string, unknown> | undefined;
-      const regionNames = lotData?.regionNames as string[] | undefined;
-      const href = lot.href as string | undefined;
-
-      const ok = await upsertTender({
-        external_id: `zakupki_${purchaseNumber}`,
-        title: lot.subject as string,
-        description: null,
-        category: inferCategory(lot.subject as string),
-        region: regionNames?.[0] ?? null,
-        buyer_name: (customer?.fullName as string) ?? null,
-        law_type: inferLawType(lot.purchaseTypeName as string | undefined),
-        budget: (lot.initialSum as number) ?? null,
-        published_at: lot.publishDate
-          ? new Date(lot.publishDate as string).toISOString()
-          : new Date().toISOString(),
-        deadline_at: lot.auctionDate ? new Date(lot.auctionDate as string).toISOString() : null,
-        source_url: href ? (href.startsWith('http') ? href : `https://zakupki.gov.ru${href}`) : null,
-        docs_url: null,
-        status: 'active',
-        raw_payload: lot,
-      });
-      if (ok) saved++;
-    }
-
-    logger.info('Sync done', { slot, keyword, fetched: lots.length, saved, ms: Date.now() - startedAt });
-    return NextResponse.json({ ok: true, slot, keyword, fetched: lots.length, saved });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    logger.error('Sync error', { slot, keyword, err });
-    return NextResponse.json({ ok: false, slot, keyword, error: message }, { status: 500 });
+    const ok = await upsertTender({
+      external_id: `bicotender_${bicotenderId}`,
+      title: item.title,
+      description: null,
+      category: inferCategory(item.title),
+      region: parseRegion(item.description),
+      buyer_name: null,
+      law_type: parseLawType(item.description),
+      budget: parseBudget(item.description),
+      published_at: item.pubDate ? new Date(item.pubDate).toISOString() : new Date().toISOString(),
+      deadline_at: parseDeadline(item.description),
+      source_url: item.link,
+      docs_url: null,
+      status: 'active',
+      raw_payload: item,
+    });
+    if (ok) saved++;
   }
+
+  logger.info('Sync done', { fetched: items.length, matched: relevant.length, saved, ms: Date.now() - startedAt });
+  return NextResponse.json({ ok: true, fetched: items.length, matched: relevant.length, saved });
 }
 
-// Called by cron-job.org: GET /api/sync?slot=0 (no auth needed — URL is the secret)
-// Called manually by admin panel (cookie auth)
 export async function GET(req: NextRequest): Promise<NextResponse> {
-  const slotParam = req.nextUrl.searchParams.get('slot');
   const secret = req.nextUrl.searchParams.get('secret');
 
-  // Allow access with CRON_SECRET in query OR admin cookie
   if (CRON_SECRET && secret !== CRON_SECRET) {
     const cookieStore = await cookies();
     const isAdmin = cookieStore.get('admin_auth')?.value === 'true';
@@ -145,12 +181,13 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     }
   }
 
-  // Auto-rotate slot based on time if not provided
-  const slot = slotParam !== null
-    ? parseInt(slotParam, 10)
-    : Math.floor(Date.now() / (30 * 60 * 1000)) % SEARCH_CATEGORIES.length;
-
-  return runSync(slot);
+  try {
+    return await runSync();
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    logger.error('Sync error', { err });
+    return NextResponse.json({ ok: false, error: message }, { status: 500 });
+  }
 }
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
@@ -158,9 +195,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   if (CRON_SECRET && authHeader !== `Bearer ${CRON_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
-  const slotParam = req.nextUrl.searchParams.get('slot');
-  const slot = slotParam !== null
-    ? parseInt(slotParam, 10)
-    : Math.floor(Date.now() / (30 * 60 * 1000)) % SEARCH_CATEGORIES.length;
-  return runSync(slot);
+  try {
+    return await runSync();
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    logger.error('Sync error', { err });
+    return NextResponse.json({ ok: false, error: message }, { status: 500 });
+  }
 }

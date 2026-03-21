@@ -2,49 +2,24 @@ name: Sync Tenders
 
 on:
   schedule:
-    # Every 2 hours
-    - cron: '0 */2 * * *'
+    # Every hour (bicotender RSS shows 100 latest, need frequent polling)
+    - cron: '0 * * * *'
   workflow_dispatch:
 
 jobs:
   sync:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
 
     steps:
-      - name: Sync all categories via Vercel
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Sync tenders from bicotender.ru RSS
         env:
-          VERCEL_APP_URL: ${{ secrets.VERCEL_APP_URL }}
-          CRON_SECRET: ${{ secrets.CRON_SECRET }}
-        run: |
-          echo "Starting sync at $(date)"
-          SUCCESS=0
-          FAIL=0
-
-          for slot in 0 1 2 3 4 5 6 7 8 9 10 11 12; do
-            echo "Syncing slot $slot..."
-            RESPONSE=$(curl -sf -w "\n%{http_code}" -X POST \
-              "${VERCEL_APP_URL}/api/sync?slot=${slot}" \
-              -H "Authorization: Bearer ${CRON_SECRET}" \
-              --max-time 30 2>&1) || true
-
-            HTTP_CODE=$(echo "$RESPONSE" | tail -1)
-            BODY=$(echo "$RESPONSE" | head -n -1)
-            echo "  → HTTP $HTTP_CODE | $BODY"
-
-            if [ "$HTTP_CODE" = "200" ]; then
-              SUCCESS=$((SUCCESS + 1))
-            else
-              FAIL=$((FAIL + 1))
-            fi
-
-            sleep 2
-          done
-
-          echo ""
-          echo "Done: $SUCCESS succeeded, $FAIL failed"
-
-          if [ "$SUCCESS" -eq 0 ]; then
-            echo "All slots failed — check VERCEL_APP_URL and CRON_SECRET secrets"
-            exit 1
-          fi
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: node .github/scripts/sync-tenders.js
