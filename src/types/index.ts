@@ -149,15 +149,33 @@ export interface TelegramChat {
 // AI Provider Interface
 // =============================================
 
+export interface MarketStats {
+  totalActive: number;
+  newThisWeek: number;
+  avgBudget: number | null;
+  medianBudget: number | null;
+  maxBudget: number | null;
+  topCategories: Array<{ name: string; count: number; avgBudget: number | null }>;
+  topRegions: Array<{ name: string; count: number }>;
+  budgetRanges: {
+    under1m: number;
+    from1to5m: number;
+    from5to20m: number;
+    over20m: number;
+  };
+  fetchedAt: string;
+}
+
 export interface AIProviderInterface {
   summarizeTender(tender: Tender): Promise<string>;
   explainWhyRecommended(tender: Tender, preferences: UserPreferences): Promise<string>;
   classifyUserIntent(text: string): Promise<UserIntent>;
   analyzeTenderDocumentation(docsUrl: string): Promise<string>;
+  analyzeMarket(stats: MarketStats, category?: string): Promise<string>;
 }
 
 export interface UserIntent {
-  type: 'search' | 'favorites' | 'inwork' | 'hidden' | 'filters' | 'help' | 'unknown';
+  type: 'search' | 'favorites' | 'inwork' | 'hidden' | 'filters' | 'help' | 'market' | 'unknown';
   keywords: string[];
   category?: string;
   region?: string;

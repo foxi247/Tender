@@ -1,5 +1,5 @@
 import { createServiceClient } from '@/lib/supabase/server';
-import type { Tender, TenderSearchParams, PaginatedResponse, UserPreferences, ScoredTender } from '@/types';
+import type { Tender, TenderSearchParams, PaginatedResponse, UserPreferences, ScoredTender, MarketStats } from '@/types';
 import { scoreTenders } from './scorer';
 import { logger } from '@/lib/logger';
 
@@ -131,6 +131,94 @@ export async function upsertTender(tender: Omit<Tender, 'id' | 'created_at' | 'u
   }
 
   return data;
+}
+
+export async function getMarketStats(category?: string): Promise<MarketStats> {
+  const supabase = createServiceClient();
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+
+  let baseQuery = supabase
+    .from('tenders')
+    .select('budget, category, region, published_at')
+    .eq('status', 'active')
+    .gte('published_at', thirtyDaysAgo);
+
+  if (category) {
+    baseQuery = baseQuery.eq('category', category);
+  }
+
+  const { data: tenders, error } = await baseQuery.order('published_at', { ascending: false });
+
+  if (error || !tenders) {
+    logger.error('getMarketStats query failed', { error });
+    return {
+      totalActive: 0, newThisWeek: 0, avgBudget: null, medianBudget: null, maxBudget: null,
+      topCategories: [], topRegions: [],
+      budgetRanges: { under1m: 0, from1to5m: 0, from5to20m: 0, over20m: 0 },
+      fetchedAt: new Date().toISOString(),
+    };
+  }
+
+  const withBudget = tenders.filter((t) => t.budget != null).map((t) => t.budget as number);
+  const newThisWeek = tenders.filter((t) => t.published_at && t.published_at >= sevenDaysAgo).length;
+
+  const avgBudget = withBudget.length > 0
+    ? Math.round(withBudget.reduce((sum, b) => sum + b, 0) / withBudget.length)
+    : null;
+
+  const sorted = [...withBudget].sort((a, b) => a - b);
+  const medianBudget = sorted.length > 0 ? sorted[Math.floor(sorted.length / 2)] : null;
+  const maxBudget = sorted.length > 0 ? sorted[sorted.length - 1] : null;
+
+  // Budget ranges
+  const budgetRanges = {
+    under1m: withBudget.filter((b) => b < 1_000_000).length,
+    from1to5m: withBudget.filter((b) => b >= 1_000_000 && b < 5_000_000).length,
+    from5to20m: withBudget.filter((b) => b >= 5_000_000 && b < 20_000_000).length,
+    over20m: withBudget.filter((b) => b >= 20_000_000).length,
+  };
+
+  // Top categories
+  const categoryMap = new Map<string, { count: number; budgets: number[] }>();
+  for (const t of tenders) {
+    if (!t.category) continue;
+    const existing = categoryMap.get(t.category) ?? { count: 0, budgets: [] };
+    existing.count++;
+    if (t.budget) existing.budgets.push(t.budget);
+    categoryMap.set(t.category, existing);
+  }
+  const topCategories = Array.from(categoryMap.entries())
+    .map(([name, { count, budgets }]) => ({
+      name,
+      count,
+      avgBudget: budgets.length > 0 ? Math.round(budgets.reduce((s, b) => s + b, 0) / budgets.length) : null,
+    }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 10);
+
+  // Top regions
+  const regionMap = new Map<string, number>();
+  for (const t of tenders) {
+    if (!t.region) continue;
+    regionMap.set(t.region, (regionMap.get(t.region) ?? 0) + 1);
+  }
+  const topRegions = Array.from(regionMap.entries())
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 10);
+
+  return {
+    totalActive: tenders.length,
+    newThisWeek,
+    avgBudget,
+    medianBudget,
+    maxBudget,
+    topCategories,
+    topRegions,
+    budgetRanges,
+    fetchedAt: new Date().toISOString(),
+  };
 }
 
 export async function getTenderStats(): Promise<{

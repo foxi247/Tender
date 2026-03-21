@@ -1,6 +1,6 @@
 import { Mistral } from '@mistralai/mistralai';
 import { createServiceClient } from '@/lib/supabase/server';
-import type { AIProviderInterface, Tender, UserPreferences, UserIntent } from '@/types';
+import type { AIProviderInterface, Tender, UserPreferences, UserIntent, MarketStats } from '@/types';
 import { formatBudget } from '@/lib/tenders/scorer';
 import { logger } from '@/lib/logger';
 
@@ -67,7 +67,7 @@ export class MistralProvider implements AIProviderInterface {
       const prompt = `Ты NLP-классификатор для Telegram-бота по тендерам.
 Проанализируй запрос пользователя и верни JSON:
 {
-  "type": "search" | "favorites" | "inwork" | "hidden" | "filters" | "help" | "unknown",
+  "type": "search" | "favorites" | "inwork" | "hidden" | "filters" | "help" | "market" | "unknown",
   "keywords": ["список", "ключевых", "слов"],
   "category": "категория если указана или null",
   "region": "регион если указан или null",
@@ -104,6 +104,60 @@ export class MistralProvider implements AIProviderInterface {
   async analyzeTenderDocumentation(docsUrl: string): Promise<string> {
     // In V2: fetch and parse docs, then analyze
     return `Анализ документации по ссылке: ${docsUrl}\n\n⚠️ Глубокий анализ документов будет доступен в следующей версии.`;
+  }
+
+  async analyzeMarket(stats: MarketStats, category?: string): Promise<string> {
+    try {
+      const topCats = stats.topCategories
+        .slice(0, 5)
+        .map((c) => `${c.name}: ${c.count} тенд., ср. бюджет ${c.avgBudget ? formatBudget(c.avgBudget) : 'н/д'}`)
+        .join('\n');
+
+      const topRegs = stats.topRegions
+        .slice(0, 5)
+        .map((r) => `${r.name}: ${r.count}`)
+        .join(', ');
+
+      const prompt = `Ты аналитик рынка тендеров на стройматериалы в России.
+Проанализируй данные рынка и дай краткое профессиональное заключение (3-5 предложений).
+${category ? `Фокус на категории: ${category}` : ''}
+
+Данные за последние 30 дней:
+- Активных тендеров: ${stats.totalActive}
+- Новых за неделю: ${stats.newThisWeek}
+- Средний бюджет: ${stats.avgBudget ? formatBudget(stats.avgBudget) : 'нет данных'}
+- Медианный бюджет: ${stats.medianBudget ? formatBudget(stats.medianBudget) : 'нет данных'}
+- Максимальный бюджет: ${stats.maxBudget ? formatBudget(stats.maxBudget) : 'нет данных'}
+
+Распределение по бюджету:
+- до 1 млн: ${stats.budgetRanges.under1m} тендеров
+- 1-5 млн: ${stats.budgetRanges.from1to5m} тендеров
+- 5-20 млн: ${stats.budgetRanges.from5to20m} тендеров
+- свыше 20 млн: ${stats.budgetRanges.over20m} тендеров
+
+Топ категории:
+${topCats || 'нет данных'}
+
+Топ регионы: ${topRegs || 'нет данных'}
+
+Дай оценку активности рынка, укажи на возможности для поставщика и возможные риски.
+Ответь на русском языке, кратко и по делу.`;
+
+      const response = await this.client.chat.complete({
+        model: this.model,
+        messages: [{ role: 'user', content: prompt }],
+        maxTokens: 400,
+      });
+
+      return response.choices?.[0]?.message?.content?.toString() ?? this.fallbackMarketAnalysis(stats);
+    } catch (err) {
+      logger.error('Mistral analyzeMarket failed', { err });
+      return this.fallbackMarketAnalysis(stats);
+    }
+  }
+
+  private fallbackMarketAnalysis(stats: MarketStats): string {
+    return `На рынке активно ${stats.totalActive} тендеров, за неделю появилось ${stats.newThisWeek} новых. Средний бюджет: ${stats.avgBudget ? formatBudget(stats.avgBudget) : 'н/д'}.`;
   }
 
   // Mistral with chat history support

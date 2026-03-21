@@ -83,6 +83,11 @@ export async function handleTextMessage(message: TelegramMessage): Promise<void>
       return handleHelp(message);
     }
 
+    case 'market': {
+      const { handleMarket } = await import('./commands');
+      return handleMarket(message, intent.category);
+    }
+
     case 'unknown':
     default:
       if (intent.confidence < 0.4) {

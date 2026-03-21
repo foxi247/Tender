@@ -4,11 +4,13 @@ import {
   formatWelcomeMessage,
   formatHelpMessage,
   formatNoTendersMessage,
+  formatMarketAnalysis,
 } from '@/lib/telegram/messages';
 import { upsertUser, getUserByTelegramId, getUserPreferences } from '@/lib/users/service';
-import { getRelevantTendersForUser } from '@/lib/tenders/service';
+import { getRelevantTendersForUser, getMarketStats } from '@/lib/tenders/service';
 import { getUserActions } from '@/lib/favorites/service';
 import { logBotEvent } from '@/lib/telegram/handlers/logger';
+import { getAIProvider } from '@/lib/ai/provider';
 import type { TelegramMessage } from '@/types';
 
 export async function handleStart(message: TelegramMessage): Promise<void> {
@@ -135,6 +137,30 @@ export async function handleHidden(message: TelegramMessage): Promise<void> {
 
   await sendMessage(chat.id, `🙈 *Скрытые тендеры \\(${actions.length}\\)*\n\n_Они не будут показываться в подборках\\._`, {});
   await logBotEvent(user.id, 'command_hidden', { count: actions.length });
+}
+
+export async function handleMarket(message: TelegramMessage, category?: string): Promise<void> {
+  const { from, chat } = message;
+  if (!from) return;
+
+  const user = await getUserByTelegramId(String(from.id));
+  if (!user) {
+    await sendMessage(chat.id, 'Пожалуйста, отправьте /start для начала работы\\.', {});
+    return;
+  }
+
+  await sendMessage(chat.id, '📊 _Анализирую рынок\\.\\.\\._', {});
+
+  const [stats, ai] = await Promise.all([
+    getMarketStats(category),
+    getAIProvider(),
+  ]);
+
+  const analysis = await ai.analyzeMarket(stats, category);
+  const text = formatMarketAnalysis(stats, analysis, category);
+
+  await sendMessage(chat.id, text, {});
+  await logBotEvent(user.id, 'command_market', { category: category ?? null });
 }
 
 export async function handleFilters(message: TelegramMessage): Promise<void> {

@@ -1,4 +1,4 @@
-import type { AIProviderInterface, Tender, UserPreferences, UserIntent } from '@/types';
+import type { AIProviderInterface, Tender, UserPreferences, UserIntent, MarketStats } from '@/types';
 import { formatBudget } from '@/lib/tenders/scorer';
 
 // Rule-based fallback — no external API required
@@ -71,6 +71,10 @@ export class RuleBasedProvider implements AIProviderInterface {
     if (/помощ|help|что умеешь/.test(lower)) {
       return { type: 'help', keywords: [], confidence: 0.9 };
     }
+    if (/рынок|аналитик|анализ рынк|тренд|спрос/.test(lower)) {
+      const categoryMatch = lower.match(/анализ\s+рынк[а-я]*\s+(.+)/) ?? lower.match(/рынок\s+(.+)/);
+      return { type: 'market', keywords: [], category: categoryMatch?.[1]?.trim(), confidence: 0.9 };
+    }
 
     // Extract search keywords
     const keywords: string[] = [];
@@ -106,5 +110,38 @@ export class RuleBasedProvider implements AIProviderInterface {
 
   async analyzeTenderDocumentation(_docsUrl: string): Promise<string> {
     return '⚠️ Анализ документации доступен в версии с AI-модулем.';
+  }
+
+  async analyzeMarket(stats: MarketStats, category?: string): Promise<string> {
+    const parts: string[] = [];
+
+    if (category) {
+      parts.push(`Анализ рынка по категории «${category}».`);
+    } else {
+      parts.push('Анализ рынка стройматериалов.');
+    }
+
+    parts.push(`Активных тендеров: ${stats.totalActive}, за неделю добавлено ${stats.newThisWeek}.`);
+
+    if (stats.avgBudget) {
+      parts.push(`Средний бюджет тендера: ${formatBudget(stats.avgBudget)}.`);
+    }
+
+    if (stats.topCategories.length > 0) {
+      const top = stats.topCategories[0];
+      parts.push(`Самая активная категория: ${top.name} (${top.count} тендеров).`);
+    }
+
+    if (stats.topRegions.length > 0) {
+      const topR = stats.topRegions.slice(0, 3).map((r) => r.name).join(', ');
+      parts.push(`Лидирующие регионы: ${topR}.`);
+    }
+
+    const large = stats.budgetRanges.from5to20m + stats.budgetRanges.over20m;
+    if (large > 0) {
+      parts.push(`Крупных тендеров (от 5 млн): ${large}.`);
+    }
+
+    return parts.join(' ');
   }
 }

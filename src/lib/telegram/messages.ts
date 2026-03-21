@@ -1,4 +1,4 @@
-import type { ScoredTender } from '@/types';
+import type { ScoredTender, MarketStats } from '@/types';
 import { formatBudget } from '@/lib/tenders/scorer';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
@@ -77,6 +77,7 @@ export function formatHelpMessage(): string {
 *Команды:*
 /start — Главное меню
 /today — Тендеры за сегодня
+/market — AI\\-анализ рынка стройматериалов
 /favorites — Избранные тендеры
 /inwork — Тендеры в работе
 /hidden — Скрытые тендеры
@@ -88,7 +89,8 @@ export function formatHelpMessage(): string {
 • "тендеры в Москве" — поиск по региону
 • "до 5 млн" — фильтр по бюджету
 • "срочные" — скоро дедлайн
-• "что новое за 3 дня" — свежие тендеры`;
+• "что новое за 3 дня" — свежие тендеры
+• "анализ рынка бетона" — AI\\-анализ по категории`;
 }
 
 export function formatNoTendersMessage(): string {
@@ -96,6 +98,61 @@ export function formatNoTendersMessage(): string {
 
 По вашим текущим фильтрам ничего не найдено\\.
 Попробуйте расширить критерии поиска или обновите фильтры\\.`;
+}
+
+export function formatMarketAnalysis(stats: MarketStats, aiAnalysis: string, category?: string): string {
+  const lines: string[] = [];
+
+  lines.push(category
+    ? `📊 *Анализ рынка: ${escapeMarkdown(category)}*`
+    : '📊 *Анализ рынка стройматериалов*');
+  lines.push('');
+
+  lines.push(`🔢 *Статистика за 30 дней:*`);
+  lines.push(`• Активных тендеров: *${stats.totalActive}*`);
+  lines.push(`• Новых за неделю: *${stats.newThisWeek}*`);
+
+  if (stats.avgBudget) {
+    lines.push(`• Средний бюджет: *${escapeMarkdown(formatBudget(stats.avgBudget))}*`);
+  }
+  if (stats.medianBudget) {
+    lines.push(`• Медианный бюджет: *${escapeMarkdown(formatBudget(stats.medianBudget))}*`);
+  }
+  if (stats.maxBudget) {
+    lines.push(`• Максимальный: *${escapeMarkdown(formatBudget(stats.maxBudget))}*`);
+  }
+
+  lines.push('');
+  lines.push(`💰 *Распределение по бюджету:*`);
+  lines.push(`• до 1 млн: ${stats.budgetRanges.under1m}`);
+  lines.push(`• 1–5 млн: ${stats.budgetRanges.from1to5m}`);
+  lines.push(`• 5–20 млн: ${stats.budgetRanges.from5to20m}`);
+  lines.push(`• свыше 20 млн: ${stats.budgetRanges.over20m}`);
+
+  if (stats.topCategories.length > 0) {
+    lines.push('');
+    lines.push('🏷 *Топ категории:*');
+    for (const cat of stats.topCategories.slice(0, 5)) {
+      const avg = cat.avgBudget ? ` — ср\\. ${escapeMarkdown(formatBudget(cat.avgBudget))}` : '';
+      lines.push(`• ${escapeMarkdown(cat.name)}: ${cat.count} тенд\\.${avg}`);
+    }
+  }
+
+  if (stats.topRegions.length > 0) {
+    lines.push('');
+    lines.push('📍 *Топ регионы:*');
+    const regionStr = stats.topRegions
+      .slice(0, 5)
+      .map((r) => `${escapeMarkdown(r.name)} \\(${r.count}\\)`)
+      .join(', ');
+    lines.push(regionStr);
+  }
+
+  lines.push('');
+  lines.push('🤖 *AI\\-анализ:*');
+  lines.push(escapeMarkdown(aiAnalysis));
+
+  return lines.join('\n');
 }
 
 export function formatUnknownMessage(): string {
@@ -109,7 +166,7 @@ export function formatUnknownMessage(): string {
 Или воспользуйтесь кнопками меню ниже\\.`;
 }
 
-function escapeMarkdown(text: string): string {
+export function escapeMarkdown(text: string): string {
   return text.replace(/[_*[\]()~`>#+\-=|{}.!\\]/g, '\\$&');
 }
 

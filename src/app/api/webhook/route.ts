@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { handleStart, handleHelp, handleToday, handleFavorites, handleInWork, handleHidden, handleFilters } from '@/lib/telegram/handlers/commands';
+import { handleStart, handleHelp, handleToday, handleFavorites, handleInWork, handleHidden, handleFilters, handleMarket } from '@/lib/telegram/handlers/commands';
 import { handleTextMessage } from '@/lib/telegram/handlers/messages';
 import { handleCallbackQuery } from '@/lib/telegram/handlers/callbacks';
 import { logger } from '@/lib/logger';
@@ -39,6 +39,11 @@ async function processUpdate(update: TelegramUpdate): Promise<void> {
     if (text.startsWith('/start')) return handleStart(update.message);
     if (text.startsWith('/help')) return handleHelp(update.message);
     if (text.startsWith('/today')) return handleToday(update.message);
+    if (text.startsWith('/market')) {
+      const parts = text.split(' ');
+      const category = parts.length > 1 ? parts.slice(1).join(' ') : undefined;
+      return handleMarket(update.message, category);
+    }
     if (text.startsWith('/favorites')) return handleFavorites(update.message);
     if (text.startsWith('/inwork')) return handleInWork(update.message);
     if (text.startsWith('/hidden')) return handleHidden(update.message);
