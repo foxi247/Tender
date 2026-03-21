@@ -57,23 +57,26 @@ export async function handleToday(message: TelegramMessage): Promise<void> {
 
   await sendMessage(chat.id, '🔍 _Ищу актуальные тендеры\\.\\.\\._', {});
 
-  const { tenders, usedFallback } = await getRelevantTendersForUser(user.id, preferences, 5);
+  const { tenders, noDataFromSources } = await getRelevantTendersForUser(user.id, preferences, 5);
 
   if (tenders.length === 0) {
-    const { getTenderStats } = await import('@/lib/tenders/service');
-    const stats = await getTenderStats();
     let msg: string;
-    if (stats.total === 0) {
-      msg = '📭 *База тендеров пуста*\n\nТендеры ещё не загружены\\. Администратор должен запустить синхронизацию в панели управления\\.\n\n_Попробуйте позже_ — синхронизация запускается ежедневно в 6:00\\.';
+    if (noDataFromSources) {
+      msg = '⚠️ *По выбранным площадкам данных пока нет*\n\nСинхронизация этих площадок ещё не настроена\\. Сейчас доступны тендеры только с Bicotender\\.\n\n_Измените площадки в ⚙️ Фильтры или подождите\\._';
     } else {
-      msg = formatNoTendersMessage();
+      const { getTenderStats } = await import('@/lib/tenders/service');
+      const stats = await getTenderStats();
+      if (stats.total === 0) {
+        msg = '📭 *База тендеров пуста*\n\nТендеры ещё не загружены\\. Администратор должен запустить синхронизацию в панели управления\\.\n\n_Попробуйте позже_ — синхронизация запускается ежедневно в 6:00\\.';
+      } else {
+        msg = formatNoTendersMessage();
+      }
     }
     await sendMessage(chat.id, msg, { reply_markup: mainMenuKeyboard() });
     return;
   }
 
-  const fallbackNote = usedFallback ? '\n_⚠️ Выбранные площадки ещё не синхронизированы — показываем из доступных источников_\n' : '';
-  await sendMessage(chat.id, `📋 *Найдено ${tenders.length} тендер\\(ов\\)*${fallbackNote ? `\n${fallbackNote}` : ''}`, {});
+  await sendMessage(chat.id, `📋 *Найдено ${tenders.length} тендер\\(ов\\)*`, {});
   await sendMultipleTenderCards(chat.id, tenders);
 
   await logBotEvent(user.id, 'command_today', { count: tenders.length });

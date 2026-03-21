@@ -84,7 +84,7 @@ export async function getRelevantTendersForUser(
   userId: string,
   preferences: UserPreferences,
   limit = 10
-): Promise<{ tenders: ScoredTender[]; usedFallback: boolean }> {
+): Promise<{ tenders: ScoredTender[]; noDataFromSources: boolean }> {
   const supabase = createServiceClient();
 
   const { data: hiddenActions } = await supabase
@@ -96,39 +96,30 @@ export async function getRelevantTendersForUser(
   const hiddenIds = (hiddenActions ?? []).map((a) => a.tender_id);
   const preferredSources = (preferences.preferred_sources as string[] | undefined) ?? [];
 
-  const buildQuery = (withSourceFilter: boolean) => {
-    let q = supabase
-      .from('tenders')
-      .select('*')
-      .eq('status', 'active')
-      .gte('published_at', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString())
-      .order('published_at', { ascending: false })
-      .limit(200);
+  let q = supabase
+    .from('tenders')
+    .select('*')
+    .eq('status', 'active')
+    .gte('published_at', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString())
+    .order('published_at', { ascending: false })
+    .limit(200);
 
-    if (hiddenIds.length > 0) {
-      q = q.not('id', 'in', `(${hiddenIds.join(',')})`);
-    }
-    if (withSourceFilter && preferredSources.length > 0) {
-      q = q.in('source', preferredSources);
-    }
-    return q;
-  };
-
-  let { data: tenders, error } = await buildQuery(true);
-  let usedFallback = false;
-
-  // If source filter returned nothing, fall back to all platforms
-  if (!error && tenders && tenders.length === 0 && preferredSources.length > 0) {
-    const fallback = await buildQuery(false);
-    tenders = fallback.data;
-    error = fallback.error;
-    usedFallback = true;
+  if (hiddenIds.length > 0) {
+    q = q.not('id', 'in', `(${hiddenIds.join(',')})`);
+  }
+  if (preferredSources.length > 0) {
+    q = q.in('source', preferredSources);
   }
 
-  if (error || !tenders) return { tenders: [], usedFallback };
+  const { data: tenders, error } = await q;
+
+  if (error || !tenders) return { tenders: [], noDataFromSources: false };
+
+  // If source filter was applied but returned nothing — tell caller
+  const noDataFromSources = preferredSources.length > 0 && tenders.length === 0;
 
   const scored = scoreTenders(tenders, preferences);
-  return { tenders: scored.slice(0, limit), usedFallback };
+  return { tenders: scored.slice(0, limit), noDataFromSources };
 }
 
 /**

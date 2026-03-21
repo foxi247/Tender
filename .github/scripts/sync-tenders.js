@@ -213,7 +213,7 @@ function mapItem(item, feedSource = 'bicotender') {
     source_url: link || null,
     docs_url: null,
     status: 'active',
-    raw_payload: { title, link, category, pubDate, bicotenderId },
+    raw_payload: { title, link, category, pubDate, tenderId },
   };
 }
 
