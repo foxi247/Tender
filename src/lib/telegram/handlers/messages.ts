@@ -141,6 +141,6 @@ async function handleSearchIntent(
     return;
   }
 
-  await sendMessage(chatId, `📋 *Найдено ${tenders.length} тендер(ов)*`, {});
+  await sendMessage(chatId, `📋 *Найдено ${tenders.length} тендер\\(ов\\)*`, {});
   await sendMultipleTenderCards(chatId, tenders);
 }

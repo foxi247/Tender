@@ -72,7 +72,7 @@ export async function handleToday(message: TelegramMessage): Promise<void> {
     return;
   }
 
-  await sendMessage(chat.id, `📋 *Найдено ${tenders.length} тендер(ов)*`, {});
+  await sendMessage(chat.id, `📋 *Найдено ${tenders.length} тендер\\(ов\\)*`, {});
   await sendMultipleTenderCards(chat.id, tenders);
 
   await logBotEvent(user.id, 'command_today', { count: tenders.length });
