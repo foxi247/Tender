@@ -42,10 +42,11 @@ export async function sendMessage(
 export async function sendTenderCard(
   chatId: number | string,
   tender: ScoredTender,
-  index?: number
+  index?: number,
+  isFavorited = false
 ): Promise<boolean> {
   const text = formatTenderCard(tender, index);
-  const keyboard = tenderActionsKeyboard(tender.id);
+  const keyboard = tenderActionsKeyboard(tender.id, isFavorited);
 
   return sendMessage(chatId, text, { reply_markup: keyboard });
 }
@@ -53,12 +54,14 @@ export async function sendTenderCard(
 export async function sendMultipleTenderCards(
   chatId: number | string,
   tenders: ScoredTender[],
-  maxCount = 5
+  maxCount = 5,
+  favoriteIds: string[] = []
 ): Promise<void> {
   const toSend = tenders.slice(0, maxCount);
+  const favSet = new Set(favoriteIds);
 
   for (let i = 0; i < toSend.length; i++) {
-    await sendTenderCard(chatId, toSend[i], i);
+    await sendTenderCard(chatId, toSend[i], i, favSet.has(toSend[i].id));
     // Small delay to avoid rate limiting
     if (i < toSend.length - 1) {
       await new Promise((r) => setTimeout(r, 100));

@@ -96,6 +96,8 @@ export async function getRelevantTendersForUser(
 
   const hiddenIds = (hiddenActions ?? []).map((a) => a.tender_id);
 
+  const preferredSources = (preferences.preferred_sources as string[] | undefined) ?? [];
+
   // Fetch active tenders from last 30 days
   let query = supabase
     .from('tenders')
@@ -107,6 +109,10 @@ export async function getRelevantTendersForUser(
 
   if (hiddenIds.length > 0) {
     query = query.not('id', 'in', `(${hiddenIds.join(',')})`);
+  }
+
+  if (preferredSources.length > 0) {
+    query = query.in('source', preferredSources);
   }
 
   const { data: tenders, error } = await query;

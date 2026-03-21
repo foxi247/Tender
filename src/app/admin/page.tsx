@@ -16,6 +16,30 @@ async function getRecentActivity() {
   return data ?? [];
 }
 
+async function getActivityByDay(): Promise<{ date: string; count: number }[]> {
+  const supabase = createServiceClient();
+  const days: { date: string; count: number }[] = [];
+
+  for (let i = 6; i >= 0; i--) {
+    const start = new Date();
+    start.setUTCHours(0, 0, 0, 0);
+    start.setUTCDate(start.getUTCDate() - i);
+    const end = new Date(start);
+    end.setUTCDate(end.getUTCDate() + 1);
+
+    const { count } = await supabase
+      .from('bot_logs')
+      .select('*', { count: 'exact', head: true })
+      .gte('created_at', start.toISOString())
+      .lt('created_at', end.toISOString());
+
+    const label = start.toLocaleDateString('ru-RU', { month: 'short', day: 'numeric', timeZone: 'Europe/Moscow' });
+    days.push({ date: label, count: count ?? 0 });
+  }
+
+  return days;
+}
+
 async function getDigestStats() {
   const supabase = createServiceClient();
   const today = new Date();
@@ -29,11 +53,12 @@ async function getDigestStats() {
 }
 
 export default async function AdminDashboard() {
-  const [tenderStats, userStats, activity, digestSent] = await Promise.all([
+  const [tenderStats, userStats, activity, digestSent, activityByDay] = await Promise.all([
     getTenderStats(),
     getUserStats(),
     getRecentActivity(),
     getDigestStats(),
+    getActivityByDay(),
   ]);
 
   const stats = [
@@ -104,6 +129,33 @@ export default async function AdminDashboard() {
             📊 История рассылок
           </Link>
         </div>
+      </div>
+
+      {/* Activity chart */}
+      <div className="card p-6">
+        <h2 className="font-semibold text-slate-900 mb-4">📈 Активность пользователей (7 дней)</h2>
+        {(() => {
+          const maxCount = Math.max(...activityByDay.map((d) => d.count), 1);
+          return (
+            <div className="flex items-end gap-2 h-32">
+              {activityByDay.map((day) => {
+                const heightPct = Math.max((day.count / maxCount) * 100, 2);
+                return (
+                  <div key={day.date} className="flex-1 flex flex-col items-center gap-1">
+                    <span className="text-xs text-slate-500 font-medium">{day.count}</span>
+                    <div
+                      className="w-full bg-brand-500 rounded-t-sm transition-all"
+                      style={{ height: `${heightPct}%` }}
+                      title={`${day.date}: ${day.count} событий`}
+                    />
+                    <span className="text-xs text-slate-400 truncate w-full text-center">{day.date}</span>
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })()}
+        <p className="text-xs text-slate-400 mt-2">События бота: команды, сообщения, нажатия кнопок</p>
       </div>
 
       {/* Recent activity */}

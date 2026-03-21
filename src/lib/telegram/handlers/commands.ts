@@ -94,13 +94,14 @@ export async function handleFavorites(message: TelegramMessage): Promise<void> {
 
   await sendMessage(chat.id, `❤️ *Избранные тендеры \\(${actions.length}\\)*`, {});
 
+  const favoriteIds = actions.map((a) => a.tender_id);
   const tenders = actions
     .slice(0, 5)
     .map((a) => a.tender)
     .filter(Boolean)
     .map((t) => ({ ...t!, score: 0, score_reasons: [], ai_summary: null, ai_why_recommended: null }));
 
-  await sendMultipleTenderCards(chat.id, tenders);
+  await sendMultipleTenderCards(chat.id, tenders, 5, favoriteIds);
   await logBotEvent(user.id, 'command_favorites', { count: actions.length });
 }
 
@@ -186,9 +187,10 @@ export async function handleFilters(message: TelegramMessage): Promise<void> {
   const categories = (prefs?.categories as string[]) ?? [];
   const regions = (prefs?.regions as string[]) ?? [];
   const maxBudget = prefs?.max_budget ?? null;
+  const preferredSources = (prefs?.preferred_sources as string[]) ?? [];
 
-  await sendMessage(chat.id, formatFilterMenu(categories, regions, maxBudget), {
-    reply_markup: filterMainMenuKeyboard(categories, regions, maxBudget),
+  await sendMessage(chat.id, formatFilterMenu(categories, regions, maxBudget, preferredSources), {
+    reply_markup: filterMainMenuKeyboard(categories, regions, maxBudget, preferredSources),
   });
   await logBotEvent(user.id, 'command_filters', {});
 }

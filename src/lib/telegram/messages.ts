@@ -189,10 +189,18 @@ export function formatMarketAnalysis(stats: MarketStats, aiAnalysis: string, cat
   return lines.join('\n');
 }
 
-export function formatFilterMenu(categories: string[], regions: string[], maxBudget: number | null): string {
+export function formatFilterMenu(
+  categories: string[],
+  regions: string[],
+  maxBudget: number | null,
+  preferredSources: string[] = []
+): string {
   const cats = categories.length > 0 ? escapeMarkdown(categories.join(', ')) : '_не выбраны_';
   const regs = regions.length > 0 ? escapeMarkdown(regions.join(', ')) : '_не выбраны_';
   const budget = maxBudget ? `до ${escapeMarkdown(formatBudgetShort(maxBudget))}` : '_без ограничений_';
+  const platforms = preferredSources.length > 0
+    ? escapeMarkdown(preferredSources.map((s) => s === 'bicotender' ? 'Bico' : 'Zakupki\\.gov').join(', '))
+    : '_все площадки_';
 
   return [
     '⚙️ *Настройка фильтров*',
@@ -200,8 +208,20 @@ export function formatFilterMenu(categories: string[], regions: string[], maxBud
     `📦 *Категории:* ${cats}`,
     `📍 *Регионы:* ${regs}`,
     `💰 *Бюджет:* ${budget}`,
+    `🌐 *Площадки:* ${platforms}`,
     '',
     'Нажмите кнопку для изменения параметра:',
+  ].join('\n');
+}
+
+export function formatFilterPlatforms(selectedCount: number): string {
+  return [
+    '🌐 *Выберите площадки*',
+    '',
+    selectedCount > 0
+      ? `Выбрано: *${selectedCount}*`
+      : '_Пусто \\= все площадки_',
+    '_Нажмите для включения/отключения:_',
   ].join('\n');
 }
 
@@ -233,10 +253,18 @@ export function formatFilterBudget(currentMax: number | null): string {
   ].join('\n');
 }
 
-export function formatFilterSaved(categories: string[], regions: string[], maxBudget: number | null): string {
+export function formatFilterSaved(
+  categories: string[],
+  regions: string[],
+  maxBudget: number | null,
+  preferredSources: string[] = []
+): string {
   const cats = categories.length > 0 ? escapeMarkdown(categories.join(', ')) : '_все категории_';
   const regs = regions.length > 0 ? escapeMarkdown(regions.join(', ')) : '_все регионы_';
   const budget = maxBudget ? `до ${escapeMarkdown(formatBudgetShort(maxBudget))}` : '_без ограничений_';
+  const platforms = preferredSources.length > 0
+    ? escapeMarkdown(preferredSources.map((s) => s === 'bicotender' ? 'Bico' : 'Zakupki.gov').join(', '))
+    : '_все площадки_';
 
   return [
     '✅ *Фильтры сохранены\\!*',
@@ -244,6 +272,7 @@ export function formatFilterSaved(categories: string[], regions: string[], maxBu
     `📦 *Категории:* ${cats}`,
     `📍 *Регионы:* ${regs}`,
     `💰 *Бюджет:* ${budget}`,
+    `🌐 *Площадки:* ${platforms}`,
     '',
     '_Подборки будут учитывать ваши настройки\\._',
   ].join('\n');

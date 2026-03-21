@@ -5,8 +5,10 @@ import {
   filterCategoriesKeyboard,
   filterRegionsKeyboard,
   filterBudgetKeyboard,
+  filterPlatformsKeyboard,
   FILTER_CATEGORIES,
   FILTER_REGIONS,
+  FILTER_PLATFORMS,
 } from '@/lib/telegram/keyboards';
 import {
   formatFilterMenu,
@@ -14,6 +16,7 @@ import {
   formatFilterRegions,
   formatFilterBudget,
   formatFilterSaved,
+  formatFilterPlatforms,
 } from '@/lib/telegram/messages';
 import { getUserByTelegramId, getUserPreferences, updateUserPreferences } from '@/lib/users/service';
 import { toggleTenderAction, addTenderAction } from '@/lib/favorites/service';
@@ -101,18 +104,19 @@ export async function handleCallbackQuery(query: TelegramCallbackQuery): Promise
 
   // ── Filter navigation ──────────────────────────────────────────────────────
 
-  if (data === 'fm' || data === 'fc' || data === 'fr' || data === 'fb') {
+  if (data === 'fm' || data === 'fc' || data === 'fr' || data === 'fb' || data === 'fp') {
     await answerCallbackQuery(queryId);
     const prefs = await getUserPreferences(user.id);
     const categories = (prefs?.categories as string[]) ?? [];
     const regions = (prefs?.regions as string[]) ?? [];
     const maxBudget = prefs?.max_budget ?? null;
+    const preferredSources = (prefs?.preferred_sources as string[]) ?? [];
     const msgId = message?.message_id;
     if (!msgId) return;
 
     if (data === 'fm') {
-      await editMessageText(chatId, msgId, formatFilterMenu(categories, regions, maxBudget), {
-        reply_markup: filterMainMenuKeyboard(categories, regions, maxBudget),
+      await editMessageText(chatId, msgId, formatFilterMenu(categories, regions, maxBudget, preferredSources), {
+        reply_markup: filterMainMenuKeyboard(categories, regions, maxBudget, preferredSources),
       });
     } else if (data === 'fc') {
       await editMessageText(chatId, msgId, formatFilterCategories(categories.length), {
@@ -121,6 +125,10 @@ export async function handleCallbackQuery(query: TelegramCallbackQuery): Promise
     } else if (data === 'fr') {
       await editMessageText(chatId, msgId, formatFilterRegions(regions.length), {
         reply_markup: filterRegionsKeyboard(regions),
+      });
+    } else if (data === 'fp') {
+      await editMessageText(chatId, msgId, formatFilterPlatforms(preferredSources.length), {
+        reply_markup: filterPlatformsKeyboard(preferredSources),
       });
     } else {
       await editMessageText(chatId, msgId, formatFilterBudget(maxBudget), {
@@ -194,6 +202,30 @@ export async function handleCallbackQuery(query: TelegramCallbackQuery): Promise
     return;
   }
 
+  // Toggle platform: fpt_<sourceId>
+  if (data.startsWith('fpt_')) {
+    const sourceId = data.slice(4);
+    const platform = FILTER_PLATFORMS.find((p) => p.id === sourceId);
+    if (!platform) { await answerCallbackQuery(queryId); return; }
+
+    const prefs = await getUserPreferences(user.id);
+    const current = (prefs?.preferred_sources as string[]) ?? [];
+    const updated = current.includes(sourceId)
+      ? current.filter((s) => s !== sourceId)
+      : [...current, sourceId];
+
+    await updateUserPreferences(user.id, { preferred_sources: updated });
+    await answerCallbackQuery(queryId, updated.includes(sourceId) ? `✅ ${platform.label}` : `❌ ${platform.label} убрана`);
+
+    const msgId = message?.message_id;
+    if (msgId) {
+      await editMessageText(chatId, msgId, formatFilterPlatforms(updated.length), {
+        reply_markup: filterPlatformsKeyboard(updated),
+      });
+    }
+    return;
+  }
+
   // Save and close: fd
   if (data === 'fd') {
     await answerCallbackQuery(queryId, '✅ Фильтры сохранены!');
@@ -201,14 +233,15 @@ export async function handleCallbackQuery(query: TelegramCallbackQuery): Promise
     const categories = (prefs?.categories as string[]) ?? [];
     const regions = (prefs?.regions as string[]) ?? [];
     const maxBudget = prefs?.max_budget ?? null;
+    const preferredSources = (prefs?.preferred_sources as string[]) ?? [];
 
     const msgId = message?.message_id;
     if (msgId) {
-      await editMessageText(chatId, msgId, formatFilterSaved(categories, regions, maxBudget), {
+      await editMessageText(chatId, msgId, formatFilterSaved(categories, regions, maxBudget, preferredSources), {
         reply_markup: { inline_keyboard: [] },
       });
     }
-    await logBotEvent(user.id, 'filter_saved', { categories, regions, maxBudget });
+    await logBotEvent(user.id, 'filter_saved', { categories, regions, maxBudget, preferredSources });
     return;
   }
 

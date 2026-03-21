@@ -14,6 +14,11 @@ export const FILTER_REGIONS = [
   'Новосибирская область', 'Красноярский край',
 ];
 
+export const FILTER_PLATFORMS: Array<{ id: string; label: string }> = [
+  { id: 'bicotender', label: 'Bico' },
+  { id: 'zakupki', label: 'Zakupki.gov' },
+];
+
 export const BUDGET_PRESETS = [
   { label: 'Без лимита', value: 0 },
   { label: 'до 500 тыс', value: 500_000 },
@@ -47,7 +52,7 @@ export function aiChatKeyboard() {
   };
 }
 
-export function tenderActionsKeyboard(tenderId: string) {
+export function tenderActionsKeyboard(tenderId: string, isFavorited = false) {
   return {
     inline_keyboard: [
       [
@@ -55,7 +60,7 @@ export function tenderActionsKeyboard(tenderId: string) {
         { text: '📄 Документация', callback_data: `docs_${tenderId}` },
       ],
       [
-        { text: '❤️ Сохранить', callback_data: `fav_${tenderId}` },
+        { text: isFavorited ? '💔 Убрать из избранного' : '❤️ Сохранить', callback_data: `fav_${tenderId}` },
         { text: '🔧 В работу', callback_data: `work_${tenderId}` },
         { text: '🙈 Скрыть', callback_data: `hide_${tenderId}` },
       ],
@@ -121,13 +126,17 @@ export function showMoreKeyboard(action: string) {
 export function filterMainMenuKeyboard(
   categories: string[],
   regions: string[],
-  maxBudget: number | null
+  maxBudget: number | null,
+  preferredSources: string[] = []
 ) {
   const catLabel = `📦 Категории${categories.length > 0 ? ` (${categories.length})` : ''}`;
   const regLabel = `📍 Регионы${regions.length > 0 ? ` (${regions.length})` : ''}`;
   const budgetLabel = maxBudget
     ? `💰 Бюджет: до ${maxBudget >= 1_000_000 ? `${maxBudget / 1_000_000} млн` : `${maxBudget / 1_000} тыс`}`
     : '💰 Бюджет: без лимита';
+  const platformLabel = preferredSources.length > 0
+    ? `🌐 Площадки (${preferredSources.length})`
+    : '🌐 Площадки: все';
 
   return {
     inline_keyboard: [
@@ -136,9 +145,21 @@ export function filterMainMenuKeyboard(
         { text: regLabel, callback_data: 'fr' },
       ],
       [{ text: budgetLabel, callback_data: 'fb' }],
+      [{ text: platformLabel, callback_data: 'fp' }],
       [{ text: '✅ Сохранить и закрыть', callback_data: 'fd' }],
     ],
   };
+}
+
+export function filterPlatformsKeyboard(selectedSources: string[]) {
+  const rows: ButtonRow[] = FILTER_PLATFORMS.map((p) => [
+    {
+      text: `${selectedSources.includes(p.id) ? '✅' : '◻️'} ${p.label}`,
+      callback_data: `fpt_${p.id}`,
+    },
+  ]);
+  rows.push([{ text: '◀️ К фильтрам', callback_data: 'fm' }]);
+  return { inline_keyboard: rows };
 }
 
 export function filterCategoriesKeyboard(selectedCategories: string[]) {

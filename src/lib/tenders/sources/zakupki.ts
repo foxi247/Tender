@@ -91,6 +91,7 @@ function mapZakupkiLot(lot: ZakupkiLot): Tender | null {
   return {
     id: '', // will be assigned by DB
     external_id: `zakupki_${purchaseNumber}`,
+    source: 'zakupki',
     title: lot.subject,
     description: null,
     category: inferCategory(lot.subject),

@@ -36,6 +36,7 @@ export interface UserPreferences {
   max_budget: number | null;
   keywords: string[];
   excluded_keywords: string[];
+  preferred_sources: string[];
   preferred_laws: LawType[];
   delivery_radius: number | null;
   created_at: string;
@@ -45,6 +46,7 @@ export interface UserPreferences {
 export interface Tender {
   id: string;
   external_id: string;
+  source: string;
   title: string;
   description: string | null;
   category: string | null;

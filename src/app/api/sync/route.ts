@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { upsertTender } from '@/lib/tenders/service';
+import { ZakupkiGovSource } from '@/lib/tenders/sources/zakupki';
 import { logger } from '@/lib/logger';
 import { cookies } from 'next/headers';
 
@@ -149,6 +150,7 @@ async function runSync(): Promise<NextResponse> {
 
     const ok = await upsertTender({
       external_id: `bicotender_${bicotenderId}`,
+      source: 'bicotender',
       title: item.title,
       description: null,
       category: inferCategory(item.title),
@@ -166,8 +168,26 @@ async function runSync(): Promise<NextResponse> {
     if (ok) saved++;
   }
 
-  logger.info('Sync done', { fetched: items.length, matched: relevant.length, saved, ms: Date.now() - startedAt });
-  return NextResponse.json({ ok: true, fetched: items.length, matched: relevant.length, saved });
+  // Sync from Zakupki.gov.ru
+  let zakupkiSaved = 0;
+  try {
+    const zakupki = new ZakupkiGovSource();
+    const zakupkiTenders = await zakupki.fetchTenders({
+      publishedAfter: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000), // last 3 days
+      limit: 50,
+    });
+
+    for (const tender of zakupkiTenders) {
+      const ok = await upsertTender({ ...tender, source: 'zakupki' });
+      if (ok) zakupkiSaved++;
+    }
+    logger.info('Zakupki sync done', { fetched: zakupkiTenders.length, saved: zakupkiSaved });
+  } catch (err) {
+    logger.warn('Zakupki sync failed (non-fatal)', { err: err instanceof Error ? err.message : String(err) });
+  }
+
+  logger.info('Sync done', { fetched: items.length, matched: relevant.length, saved, zakupkiSaved, ms: Date.now() - startedAt });
+  return NextResponse.json({ ok: true, fetched: items.length, matched: relevant.length, saved, zakupkiSaved });
 }
 
 export async function GET(req: NextRequest): Promise<NextResponse> {

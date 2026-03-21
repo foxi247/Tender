@@ -139,7 +139,7 @@ export async function POST(): Promise<NextResponse> {
 
   let saved = 0;
   for (const tender of SEED_TENDERS) {
-    const result = await upsertTender(tender);
+    const result = await upsertTender({ ...tender, source: 'zakupki' });
     if (result) saved++;
   }
 
