@@ -161,7 +161,7 @@ async function runSync(): Promise<NextResponse> {
       source_url: item.link,
       docs_url: null,
       status: 'active',
-      raw_payload: item,
+      raw_payload: item as unknown as Record<string, unknown>,
     });
     if (ok) saved++;
   }

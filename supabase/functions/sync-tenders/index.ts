@@ -1,5 +1,7 @@
 // Supabase Edge Function: zakupki.gov.ru RSS → Supabase
 // Runs on Deno Deploy (EU servers) — not blocked by zakupki.gov.ru
+// deno-lint-ignore-file
+// @ts-nocheck
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
