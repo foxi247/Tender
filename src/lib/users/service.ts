@@ -126,6 +126,14 @@ async function ensureDefaultPreferences(userId: string): Promise<void> {
   );
 }
 
+export async function setAiChatMode(userId: string, active: boolean): Promise<void> {
+  const supabase = createServiceClient();
+  await supabase
+    .from('users')
+    .update({ ai_chat_mode: active, updated_at: new Date().toISOString() })
+    .eq('id', userId);
+}
+
 export async function updateUserActivity(telegramId: string): Promise<void> {
   const supabase = createServiceClient();
   await supabase

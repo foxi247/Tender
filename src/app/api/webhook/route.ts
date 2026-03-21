@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { handleStart, handleHelp, handleToday, handleFavorites, handleInWork, handleHidden, handleFilters, handleMarket } from '@/lib/telegram/handlers/commands';
+import { handleAiChatOpen, handleAiChatClose } from '@/lib/telegram/handlers/aichat';
 import { handleTextMessage } from '@/lib/telegram/handlers/messages';
 import { handleCallbackQuery } from '@/lib/telegram/handlers/callbacks';
 import { logger } from '@/lib/logger';
@@ -45,6 +46,8 @@ async function processUpdate(update: TelegramUpdate): Promise<void> {
       return handleMarket(update.message, category);
     }
     if (text === '📊 Анализ рынка') return handleMarket(update.message, undefined);
+    if (text === '🤖 ИИ Чат') return handleAiChatOpen(update.message);
+    if (text === '❌ Завершить ИИ Чат') return handleAiChatClose(update.message);
     if (text.startsWith('/favorites')) return handleFavorites(update.message);
     if (text.startsWith('/inwork')) return handleInWork(update.message);
     if (text.startsWith('/hidden')) return handleHidden(update.message);

@@ -1,6 +1,6 @@
 import { sendMessage, sendMultipleTenderCards } from '@/lib/telegram/bot';
 import { mainMenuKeyboard } from '@/lib/telegram/keyboards';
-import { formatUnknownMessage, formatNoTendersMessage } from '@/lib/telegram/messages';
+import { formatUnknownMessage, formatNoTendersMessage, formatAiChatSuggest } from '@/lib/telegram/messages';
 import { upsertUser, getUserByTelegramId, getUserPreferences } from '@/lib/users/service';
 import { getRelevantTendersForUser, getTenders } from '@/lib/tenders/service';
 import { getAIProvider } from '@/lib/ai/provider';
@@ -47,6 +47,12 @@ export async function handleTextMessage(message: TelegramMessage): Promise<void>
 
   if (!user) return;
 
+  // If AI chat mode is active — route to AI chat handler
+  if (user.ai_chat_mode) {
+    const { handleAiChatMessage } = await import('./aichat');
+    return handleAiChatMessage(message);
+  }
+
   // Classify intent using AI
   const ai = await getAIProvider();
   const intent = await ai.classifyUserIntent(text);
@@ -91,7 +97,7 @@ export async function handleTextMessage(message: TelegramMessage): Promise<void>
     case 'unknown':
     default:
       if (intent.confidence < 0.4) {
-        await sendMessage(chat.id, formatUnknownMessage(), { reply_markup: mainMenuKeyboard() });
+        await sendMessage(chat.id, formatAiChatSuggest(), { reply_markup: mainMenuKeyboard() });
       } else {
         // Try search anyway
         await handleSearchIntent(chat.id, user.id, [text]);

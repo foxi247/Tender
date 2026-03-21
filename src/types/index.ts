@@ -24,6 +24,7 @@ export interface User {
   is_active: boolean;
   tariff_plan: TariffPlan;
   last_active_at: string | null;
+  ai_chat_mode: boolean;
 }
 
 export interface UserPreferences {
@@ -172,6 +173,7 @@ export interface AIProviderInterface {
   classifyUserIntent(text: string): Promise<UserIntent>;
   analyzeTenderDocumentation(docsUrl: string): Promise<string>;
   analyzeMarket(stats: MarketStats, category?: string): Promise<string>;
+  chatWithHistory(userId: string, userMessage: string): Promise<string>;
 }
 
 export interface UserIntent {

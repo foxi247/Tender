@@ -31,8 +31,17 @@ export function mainMenuKeyboard() {
     keyboard: [
       [{ text: '📋 Тендеры сегодня' }, { text: '⭐ Лучшие для меня' }],
       [{ text: '❤️ Избранное' }, { text: '🔧 В работе' }],
-      [{ text: '📊 Анализ рынка' }, { text: '⚙️ Фильтры' }, { text: '❓ Помощь' }],
+      [{ text: '📊 Анализ рынка' }, { text: '🤖 ИИ Чат' }],
+      [{ text: '⚙️ Фильтры' }, { text: '❓ Помощь' }],
     ],
+    resize_keyboard: true,
+    persistent: true,
+  };
+}
+
+export function aiChatKeyboard() {
+  return {
+    keyboard: [[{ text: '❌ Завершить ИИ Чат' }]],
     resize_keyboard: true,
     persistent: true,
   };

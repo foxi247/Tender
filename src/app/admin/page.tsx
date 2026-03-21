@@ -1,8 +1,7 @@
 import { getTenderStats } from '@/lib/tenders/service';
 import { getUserStats } from '@/lib/users/service';
 import { createServiceClient } from '@/lib/supabase/server';
-import { format } from 'date-fns';
-import { ru } from 'date-fns/locale';
+import { formatMoscow } from '@/lib/utils/date';
 import Link from 'next/link';
 
 export const dynamic = 'force-dynamic';
@@ -61,7 +60,7 @@ export default async function AdminDashboard() {
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Дашборд</h1>
           <p className="text-slate-500 text-sm mt-1">
-            {format(new Date(), "d MMMM yyyy, HH:mm", { locale: ru })}
+            {formatMoscow(new Date(), "d MMMM yyyy, HH:mm")}
           </p>
         </div>
         <Link href="/admin/tenders" className="btn-primary">
@@ -134,7 +133,7 @@ export default async function AdminDashboard() {
                   </div>
                 </div>
                 <span className="text-xs text-slate-400">
-                  {format(new Date(createdAt), 'HH:mm', { locale: ru })}
+                  {formatMoscow(createdAt, 'HH:mm')}
                 </span>
               </div>
             );

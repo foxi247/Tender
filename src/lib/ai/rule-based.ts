@@ -112,6 +112,17 @@ export class RuleBasedProvider implements AIProviderInterface {
     return '⚠️ Анализ документации доступен в версии с AI-модулем.';
   }
 
+  async chatWithHistory(_userId: string, userMessage: string): Promise<string> {
+    const lower = userMessage.toLowerCase();
+    if (/привет|здравст|добр/.test(lower)) {
+      return 'Здравствуйте! Я помогаю искать тендеры на стройматериалы. Задайте вопрос или опишите, что ищете.';
+    }
+    if (/как|что|помог|умеешь/.test(lower)) {
+      return 'Я могу помочь найти тендеры по категории, региону и бюджету. Например: "покажи бетон в Москве до 5 млн".';
+    }
+    return 'Для поиска тендеров подключите AI-модуль в настройках. Пока могу принимать запросы через основное меню.';
+  }
+
   async analyzeMarket(stats: MarketStats, category?: string): Promise<string> {
     const parts: string[] = [];
 
