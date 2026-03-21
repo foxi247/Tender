@@ -110,8 +110,6 @@ export default function AdminSidebar() {
         </div>
       </aside>
 
-      {/* Mobile content offset */}
-      <div className="md:hidden h-14 shrink-0" />
     </>
   );
 }
