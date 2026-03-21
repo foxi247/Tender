@@ -140,6 +140,34 @@ export async function handleCallbackQuery(query: TelegramCallbackQuery): Promise
     return;
   }
 
+  // Select/Deselect all categories: fca_all / fca_none
+  if (data === 'fca_all' || data === 'fca_none') {
+    await answerCallbackQuery(queryId);
+    const updated = data === 'fca_all' ? [...FILTER_CATEGORIES] : [];
+    await updateUserPreferences(user.id, { categories: updated });
+    const msgId = message?.message_id;
+    if (msgId) {
+      await editMessageText(chatId, msgId, formatFilterCategories(updated.length), {
+        reply_markup: filterCategoriesKeyboard(updated),
+      });
+    }
+    return;
+  }
+
+  // Select/Deselect all regions: fra_all / fra_none
+  if (data === 'fra_all' || data === 'fra_none') {
+    await answerCallbackQuery(queryId);
+    const updated = data === 'fra_all' ? [...FILTER_REGIONS] : [];
+    await updateUserPreferences(user.id, { regions: updated });
+    const msgId = message?.message_id;
+    if (msgId) {
+      await editMessageText(chatId, msgId, formatFilterRegions(updated.length), {
+        reply_markup: filterRegionsKeyboard(updated),
+      });
+    }
+    return;
+  }
+
   // Toggle category: fct_N
   if (data.startsWith('fct_')) {
     const idx = parseInt(data.slice(4), 10);

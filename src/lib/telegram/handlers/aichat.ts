@@ -1,14 +1,73 @@
-import { sendMessage } from '@/lib/telegram/bot';
+import { sendMessage, sendMultipleTenderCards } from '@/lib/telegram/bot';
 import { mainMenuKeyboard, aiChatKeyboard } from '@/lib/telegram/keyboards';
+import { FILTER_CATEGORIES, FILTER_REGIONS } from '@/lib/telegram/keyboards';
 import {
   formatAiChatOpened,
   formatAiChatClosed,
   escapeMarkdown,
 } from '@/lib/telegram/messages';
-import { upsertUser, setAiChatMode } from '@/lib/users/service';
+import { upsertUser, setAiChatMode, getUserPreferences } from '@/lib/users/service';
 import { getAIProvider } from '@/lib/ai/provider';
+import { getRelevantTendersForUser } from '@/lib/tenders/service';
 import { logBotEvent } from './logger';
-import type { TelegramMessage } from '@/types';
+import type { TelegramMessage, UserPreferences } from '@/types';
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Intent detection: is the message asking to search tenders?
+// ──────────────────────────────────────────────────────────────────────────────
+
+const SEARCH_TRIGGERS = [
+  'найди', 'найти', 'покажи', 'показать', 'ищи', 'искать', 'ищу',
+  'поищи', 'подбери', 'подобрать', 'есть тендер', 'тендеры по', 'тендер на',
+  'закупки по', 'закупки на', 'закупку', 'тендер',
+];
+
+function isTenderSearchRequest(text: string): boolean {
+  const lower = text.toLowerCase();
+  return SEARCH_TRIGGERS.some((t) => lower.includes(t));
+}
+
+/** Extract category keywords from user message */
+function extractCategories(text: string): string[] {
+  const lower = text.toLowerCase();
+  return FILTER_CATEGORIES.filter((cat) => lower.includes(cat.toLowerCase()));
+}
+
+/** Extract region keywords from user message */
+function extractRegions(text: string): string[] {
+  const lower = text.toLowerCase();
+  const found: string[] = [];
+
+  for (const reg of FILTER_REGIONS) {
+    if (lower.includes(reg.toLowerCase())) {
+      found.push(reg);
+    }
+  }
+
+  // Also check short forms that might not be in FILTER_REGIONS
+  const extraMap: Record<string, string> = {
+    'дагестан': 'Республика Дагестан',
+    'дербент': 'Дербент',
+    'махачкала': 'Махачкала',
+    'москва': 'Москва',
+    'питер': 'Санкт-Петербург',
+    'краснодар': 'Краснодарский край',
+    'ростов': 'Ростовская область',
+    'казань': 'Республика Татарстан',
+    'чечня': 'Чеченская Республика',
+  };
+  for (const [short, full] of Object.entries(extraMap)) {
+    if (lower.includes(short) && !found.includes(full)) {
+      found.push(full);
+    }
+  }
+
+  return found;
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Handlers
+// ──────────────────────────────────────────────────────────────────────────────
 
 export async function handleAiChatOpen(message: TelegramMessage): Promise<void> {
   const { from, chat } = message;
@@ -61,7 +120,49 @@ export async function handleAiChatMessage(message: TelegramMessage): Promise<voi
 
   await logBotEvent(user.id, 'ai_chat_message', { text });
 
-  // Show typing indicator
+  // ── Check if user is searching for tenders ──────────────────────────────
+  if (isTenderSearchRequest(text)) {
+    const categories = extractCategories(text);
+    const regions = extractRegions(text);
+
+    if (categories.length > 0 || regions.length > 0) {
+      await sendMessage(chat.id, '🔍 _Ищу тендеры по вашему запросу\\.\\.\\._', {
+        reply_markup: aiChatKeyboard(),
+      });
+
+      // Load user base prefs, then override with extracted params
+      const basePrefs = await getUserPreferences(user.id);
+      const searchPrefs: UserPreferences = {
+        ...(basePrefs ?? {}),
+        categories: categories.length > 0 ? categories : ((basePrefs?.categories as string[]) ?? []),
+        regions: regions.length > 0 ? regions : ((basePrefs?.regions as string[]) ?? []),
+      } as UserPreferences;
+
+      const tenders = await getRelevantTendersForUser(user.id, searchPrefs, 5);
+
+      if (tenders.length > 0) {
+        const catStr = categories.length > 0 ? categories.join(', ') : 'по вашим фильтрам';
+        const regStr = regions.length > 0 ? ` в ${regions.join(', ')}` : '';
+        await sendMessage(
+          chat.id,
+          escapeMarkdown(`🎯 Нашёл ${tenders.length} тендеров по "${catStr}"${regStr}:`),
+          { reply_markup: aiChatKeyboard() }
+        );
+        await sendMultipleTenderCards(chat.id, tenders, 5);
+      } else {
+        const catStr = categories.length > 0 ? categories.join(', ') : '';
+        const regStr = regions.length > 0 ? ` в ${regions.join(', ')}` : '';
+        await sendMessage(
+          chat.id,
+          escapeMarkdown(`😔 По запросу "${catStr}${regStr}" тендеров не найдено. Попробуйте другие параметры или проверьте через 📋 Тендеры сегодня.`),
+          { reply_markup: aiChatKeyboard() }
+        );
+      }
+      return;
+    }
+  }
+
+  // ── Regular AI chat ──────────────────────────────────────────────────────
   await sendMessage(chat.id, '🤖 _Думаю\\.\\.\\._', {});
 
   try {

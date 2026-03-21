@@ -98,24 +98,33 @@ export async function getRelevantTendersForUser(
 
   const preferredSources = (preferences.preferred_sources as string[] | undefined) ?? [];
 
-  // Fetch active tenders from last 30 days
-  let query = supabase
-    .from('tenders')
-    .select('*')
-    .eq('status', 'active')
-    .gte('published_at', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString())
-    .order('published_at', { ascending: false })
-    .limit(100);
+  const buildQuery = (withSourceFilter: boolean) => {
+    let q = supabase
+      .from('tenders')
+      .select('*')
+      .eq('status', 'active')
+      .gte('published_at', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString())
+      .order('published_at', { ascending: false })
+      .limit(200);
 
-  if (hiddenIds.length > 0) {
-    query = query.not('id', 'in', `(${hiddenIds.join(',')})`);
+    if (hiddenIds.length > 0) {
+      q = q.not('id', 'in', `(${hiddenIds.join(',')})`);
+    }
+    if (withSourceFilter && preferredSources.length > 0) {
+      q = q.in('source', preferredSources);
+    }
+    return q;
+  };
+
+  let { data: tenders, error } = await buildQuery(true);
+
+  // If source filter returned nothing, fall back to all platforms (the RSS feeds may not have data yet)
+  if (!error && tenders && tenders.length === 0 && preferredSources.length > 0) {
+    const fallback = await buildQuery(false);
+    tenders = fallback.data;
+    error = fallback.error;
   }
 
-  if (preferredSources.length > 0) {
-    query = query.in('source', preferredSources);
-  }
-
-  const { data: tenders, error } = await query;
   if (error || !tenders) return [];
 
   const scored = scoreTenders(tenders, preferences);

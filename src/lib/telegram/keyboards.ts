@@ -32,6 +32,10 @@ export const FILTER_REGIONS = [
   'Республика Татарстан', 'Самарская область', 'Нижегородская область',
   'Воронежская область', 'Ставропольский край', 'Республика Крым',
   'Новосибирская область', 'Красноярский край',
+  'Республика Дагестан', 'Махачкала', 'Дербент',
+  'Чеченская Республика', 'Республика Башкортостан', 'Пермский край',
+  'Волгоградская область', 'Саратовская область', 'Тюменская область',
+  'Иркутская область', 'Приморский край', 'Хабаровский край',
 ];
 
 export const FILTER_PLATFORMS: Array<{ id: string; label: string }> = [
@@ -232,6 +236,11 @@ export function filterPlatformsKeyboard(selectedSources: string[]) {
 
 export function filterCategoriesKeyboard(selectedCategories: string[]) {
   const rows: ButtonRow[] = [];
+  // Select All / Deselect All row
+  const allSelected = selectedCategories.length === FILTER_CATEGORIES.length;
+  rows.push([
+    { text: allSelected ? '☑️ Снять все' : '✅ Выбрать все', callback_data: allSelected ? 'fca_none' : 'fca_all' },
+  ]);
   for (let i = 0; i < FILTER_CATEGORIES.length; i += 2) {
     const row: ButtonRow = [];
     for (let j = i; j < Math.min(i + 2, FILTER_CATEGORIES.length); j++) {
@@ -249,6 +258,11 @@ export function filterCategoriesKeyboard(selectedCategories: string[]) {
 
 export function filterRegionsKeyboard(selectedRegions: string[]) {
   const rows: ButtonRow[] = [];
+  // Select All / Deselect All row
+  const allSelected = selectedRegions.length === FILTER_REGIONS.length;
+  rows.push([
+    { text: allSelected ? '☑️ Снять все' : '✅ Выбрать все', callback_data: allSelected ? 'fra_none' : 'fra_all' },
+  ]);
   for (let i = 0; i < FILTER_REGIONS.length; i += 2) {
     const row: ButtonRow = [];
     for (let j = i; j < Math.min(i + 2, FILTER_REGIONS.length); j++) {
