@@ -1,6 +1,14 @@
 // Sync tenders from zakupki.gov.ru RSS feeds into Supabase
 // Runs in GitHub Actions (Node.js) where zakupki.gov.ru is reachable
 
+import { ProxyAgent, setGlobalDispatcher } from 'undici';
+
+const HTTP_PROXY = process.env.HTTP_PROXY || process.env.HTTPS_PROXY;
+if (HTTP_PROXY) {
+  setGlobalDispatcher(new ProxyAgent(HTTP_PROXY));
+  console.error(`Using proxy: ${HTTP_PROXY}`);
+}
+
 const BASE_URL = 'https://zakupki.gov.ru';
 const RSS_URL = `${BASE_URL}/epz/order/extendedsearch/rss.xml`;
 

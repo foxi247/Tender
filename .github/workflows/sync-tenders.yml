@@ -18,6 +18,20 @@ jobs:
         with:
           node-version: '20'
 
+      - name: Get Russian proxy
+        run: |
+          echo "Fetching Russian proxy list..."
+          PROXY=$(curl -s --max-time 15 \
+            "https://api.proxyscrape.com/v3/free-proxy-list/get?request=displayproxies&country=ru&protocol=http&proxy_format=ipport&format=text&timeout=10000&limit=10" \
+            | grep -v '^$' | head -1)
+          if [ -n "$PROXY" ]; then
+            echo "HTTP_PROXY=http://$PROXY" >> $GITHUB_ENV
+            echo "HTTPS_PROXY=http://$PROXY" >> $GITHUB_ENV
+            echo "Found proxy: $PROXY"
+          else
+            echo "No proxy found, will try direct connection"
+          fi
+
       - name: Sync tenders from zakupki.gov.ru
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
