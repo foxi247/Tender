@@ -37,7 +37,7 @@ function inferCategory(title: string): string {
   return 'Стройматериалы';
 }
 
-function inferLawType(purchaseTypeName?: string): string {
+function inferLawType(purchaseTypeName?: string): '44-FZ' | '223-FZ' | 'commercial' | 'other' {
   if (!purchaseTypeName) return 'other';
   const lower = purchaseTypeName.toLowerCase();
   if (lower.includes('44') || lower.includes('электронный аукцион')) return '44-FZ';
