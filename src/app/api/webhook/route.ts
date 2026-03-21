@@ -44,6 +44,7 @@ async function processUpdate(update: TelegramUpdate): Promise<void> {
       const category = parts.length > 1 ? parts.slice(1).join(' ') : undefined;
       return handleMarket(update.message, category);
     }
+    if (text === '📊 Анализ рынка') return handleMarket(update.message, undefined);
     if (text.startsWith('/favorites')) return handleFavorites(update.message);
     if (text.startsWith('/inwork')) return handleInWork(update.message);
     if (text.startsWith('/hidden')) return handleHidden(update.message);
