@@ -7,7 +7,7 @@ export function formatTenderCard(tender: ScoredTender, index?: number): string {
   const lines: string[] = [];
 
   if (index !== undefined) {
-    lines.push(`*${index + 1}. ${escapeMarkdown(tender.title)}*`);
+    lines.push(`*${index + 1}\\. ${escapeMarkdown(tender.title)}*`);
   } else {
     lines.push(`*${escapeMarkdown(tender.title)}*`);
   }
@@ -26,7 +26,7 @@ export function formatTenderCard(tender: ScoredTender, index?: number): string {
     const deadline = new Date(tender.deadline_at);
     const daysLeft = Math.ceil((deadline.getTime() - Date.now()) / 86400000);
     const dateStr = format(deadline, 'd MMMM yyyy', { locale: ru });
-    const urgency = daysLeft <= 3 ? ` ⚠️ (${daysLeft} дн.)` : ` (${daysLeft} дн.)`;
+    const urgency = daysLeft <= 3 ? ` ⚠️ \\(${daysLeft} дн\\.\\)` : ` \\(${daysLeft} дн\\.\\)`;
     lines.push(`⏰ *Дедлайн:* ${escapeMarkdown(dateStr)}${urgency}`);
   }
 
