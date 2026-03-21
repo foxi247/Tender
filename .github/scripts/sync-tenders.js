@@ -104,8 +104,11 @@ function parseRegion(description) {
   const clean = (description || '').replace(/&lt;[^&]*&gt;/g, ' ').replace(/<[^>]+>/g, ' ');
   const m = clean.match(/Регион:\s*([^\n<]+)/i);
   if (!m) return null;
-  // Take last meaningful part: "Воронежская область"
-  const parts = m[1].split('/').map(s => s.trim()).filter(Boolean);
+  let raw = m[1];
+  // Cut off at next field marker so region text doesn't bleed into "Цена:", "Начало:", etc.
+  const cutIdx = raw.search(/\s+(?:Цена|Начало|Окончание|Тип):/i);
+  if (cutIdx > 0) raw = raw.slice(0, cutIdx);
+  const parts = raw.split('/').map(s => s.trim()).filter(Boolean);
   return parts[parts.length - 1] || parts[0] || null;
 }
 
@@ -148,6 +151,7 @@ function mapItem(item) {
 
   return {
     external_id: `bicotender_${bicotenderId}`,
+    source: 'bicotender',
     title,
     description: null,
     category: inferCategory(title),
@@ -178,21 +182,31 @@ async function fetchRSS() {
 
 async function upsertToSupabase(tenders) {
   if (tenders.length === 0) return 0;
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/tenders`, {
-    method: 'POST',
-    headers: {
-      apikey: SUPABASE_KEY,
-      Authorization: `Bearer ${SUPABASE_KEY}`,
-      'Content-Type': 'application/json',
-      Prefer: 'resolution=merge-duplicates',
-    },
-    body: JSON.stringify(tenders),
-  });
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Supabase ${res.status}: ${err}`);
+
+  // Send in batches of 50 to avoid payload size limits
+  let saved = 0;
+  const batchSize = 50;
+  for (let i = 0; i < tenders.length; i += batchSize) {
+    const batch = tenders.slice(i, i + batchSize);
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/tenders`, {
+      method: 'POST',
+      headers: {
+        apikey: SUPABASE_KEY,
+        Authorization: `Bearer ${SUPABASE_KEY}`,
+        'Content-Type': 'application/json',
+        Prefer: 'resolution=merge-duplicates',
+      },
+      body: JSON.stringify(batch),
+    });
+    if (!res.ok) {
+      const err = await res.text();
+      console.error(`Supabase batch ${i}-${i + batch.length} failed: ${res.status}`, err.slice(0, 500));
+      throw new Error(`Supabase ${res.status}: ${err.slice(0, 200)}`);
+    }
+    saved += batch.length;
+    console.log(`  Batch ${Math.floor(i / batchSize) + 1}: saved ${batch.length} tenders`);
   }
-  return tenders.length;
+  return saved;
 }
 
 async function main() {

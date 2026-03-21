@@ -98,6 +98,27 @@ export async function sendDigestToUser(
   }
 }
 
+export async function sendPhoto(
+  chatId: number | string,
+  photoUrl: string,
+  caption: string,
+  options: Record<string, unknown> = {}
+): Promise<boolean> {
+  try {
+    await callTelegram('sendPhoto', {
+      chat_id: chatId,
+      photo: photoUrl,
+      caption,
+      parse_mode: 'MarkdownV2',
+      ...options,
+    });
+    return true;
+  } catch (err) {
+    logger.error('sendPhoto failed', { err, chatId });
+    return false;
+  }
+}
+
 export async function answerCallbackQuery(
   callbackQueryId: string,
   text?: string
