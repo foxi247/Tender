@@ -6,6 +6,8 @@ import {
   filterRegionsKeyboard,
   filterBudgetKeyboard,
   filterPlatformsKeyboard,
+  marketCategorySelectKeyboard,
+  marketAllCategoriesKeyboard,
   FILTER_CATEGORIES,
   FILTER_REGIONS,
   FILTER_PLATFORMS,
@@ -242,6 +244,51 @@ export async function handleCallbackQuery(query: TelegramCallbackQuery): Promise
       });
     }
     await logBotEvent(user.id, 'filter_saved', { categories, regions, maxBudget, preferredSources });
+    return;
+  }
+
+  // ── Market analysis category selection ───────────────────────────────────
+  if (data.startsWith('mcat_')) {
+    await answerCallbackQuery(queryId);
+    const prefs = await getUserPreferences(user.id);
+    const preferredSources = (prefs?.preferred_sources as string[] | undefined) ?? [];
+    const preferredRegions = (prefs?.regions as string[] | undefined) ?? [];
+    const userCategories = (prefs?.categories as string[] | undefined) ?? [];
+    const msgId = message?.message_id;
+
+    if (data === 'mcat_back') {
+      // Return to category selection
+      if (msgId) {
+        await editMessageText(chatId, msgId, '📊 *Анализ рынка тендеров*\n\nПо какой теме сделать анализ?', {
+          parse_mode: 'MarkdownV2',
+          reply_markup: marketCategorySelectKeyboard(userCategories),
+        });
+      }
+      return;
+    }
+
+    if (data === 'mcat_all_list') {
+      // Show all categories keyboard
+      if (msgId) {
+        await editMessageText(chatId, msgId, '📂 *Все категории* — выберите для анализа:', {
+          parse_mode: 'MarkdownV2',
+          reply_markup: marketAllCategoriesKeyboard(),
+        });
+      }
+      return;
+    }
+
+    // Run market analysis: mcat_general = all categories, else specific category
+    const category = data === 'mcat_general' ? undefined : data.slice(5);
+    const { handleMarketAnalysis } = await import('./commands');
+    await handleMarketAnalysis(
+      chatId,
+      user.id,
+      category,
+      preferredSources.length > 0 ? preferredSources : undefined,
+      // General analysis uses user's regions; category analysis doesn't restrict by region
+      data === 'mcat_general' ? (preferredRegions.length > 0 ? preferredRegions : undefined) : undefined,
+    );
     return;
   }
 

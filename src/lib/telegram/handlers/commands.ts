@@ -1,5 +1,5 @@
 import { sendMessage, sendMultipleTenderCards } from '@/lib/telegram/bot';
-import { mainMenuKeyboard, filterMainMenuKeyboard } from '@/lib/telegram/keyboards';
+import { mainMenuKeyboard, filterMainMenuKeyboard, marketCategorySelectKeyboard, marketAllCategoriesKeyboard } from '@/lib/telegram/keyboards';
 import {
   formatWelcomeMessage,
   formatHelpMessage,
@@ -149,7 +149,8 @@ export async function handleHidden(message: TelegramMessage): Promise<void> {
   await logBotEvent(user.id, 'command_hidden', { count: actions.length });
 }
 
-export async function handleMarket(message: TelegramMessage, category?: string): Promise<void> {
+/** Step 1: Show category selection keyboard */
+export async function handleMarket(message: TelegramMessage): Promise<void> {
   const { from, chat } = message;
   if (!from) return;
 
@@ -160,21 +161,58 @@ export async function handleMarket(message: TelegramMessage, category?: string):
   }
 
   const prefs = await getUserPreferences(user.id);
-  const preferredSources = (prefs?.preferred_sources as string[] | undefined) ?? [];
-  const filterCategory = category ?? ((prefs?.categories as string[] | undefined)?.[0]);
+  const userCategories = (prefs?.categories as string[] | undefined) ?? [];
 
-  await sendMessage(chat.id, '📊 _Анализирую рынок\\.\\.\\._', {});
+  const hint = userCategories.length > 0
+    ? `Ваши категории: *${userCategories.slice(0, 5).join(', ')}*\\.`
+    : 'Выберите категорию для анализа или нажмите *Общий анализ*\\.';
+
+  await sendMessage(
+    chat.id,
+    `📊 *Анализ рынка тендеров*\n\n${hint}\n\nПо какой теме сделать анализ?`,
+    { parse_mode: 'MarkdownV2', reply_markup: marketCategorySelectKeyboard(userCategories) }
+  );
+  await logBotEvent(user.id, 'command_market', { step: 'category_select' });
+}
+
+/** Step 2: Actually run the market analysis after category is chosen */
+export async function handleMarketAnalysis(
+  chatId: number | string,
+  userId: string,
+  category?: string,  // undefined = general (all categories)
+  sources?: string[],
+  regions?: string[],
+): Promise<void> {
+  await sendMessage(chatId, `📊 _Анализирую рынок${category ? ` по категории "${category}"` : ''}\\.\\.\\._`, {});
 
   const [stats, ai] = await Promise.all([
-    getMarketStats(filterCategory, preferredSources.length > 0 ? preferredSources : undefined),
+    getMarketStats(
+      category,
+      sources && sources.length > 0 ? sources : undefined,
+      regions && regions.length > 0 ? regions : undefined,
+    ),
     getAIProvider(),
   ]);
 
-  const analysis = await ai.analyzeMarket(stats, filterCategory);
-  const text = formatMarketAnalysis(stats, analysis, filterCategory);
+  const analysis = await ai.analyzeMarket(stats, category);
+  const text = formatMarketAnalysis(stats, analysis, category);
 
-  await sendMessage(chat.id, text, {});
-  await logBotEvent(user.id, 'command_market', { category: filterCategory ?? null, sources: preferredSources });
+  await sendMessage(chatId, text, {});
+  await logBotEvent(userId, 'command_market', { category: category ?? 'general', sources });
+}
+
+/** Show full category list for picking */
+export async function handleMarketAllCategories(
+  chatId: number | string,
+  messageId: number,
+): Promise<void> {
+  const { editMessageText } = await import('@/lib/telegram/bot');
+  await editMessageText(
+    chatId,
+    messageId,
+    '📂 *Все категории* — выберите для анализа:',
+    { parse_mode: 'MarkdownV2', reply_markup: marketAllCategoriesKeyboard() }
+  );
 }
 
 export async function handleFilters(message: TelegramMessage): Promise<void> {

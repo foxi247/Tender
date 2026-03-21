@@ -118,11 +118,15 @@ export class MistralProvider implements AIProviderInterface {
         .map((r) => `${r.name}: ${r.count}`)
         .join(', ');
 
-      const prompt = `Ты аналитик рынка тендеров на стройматериалы в России.
-Проанализируй данные рынка и дай краткое профессиональное заключение (3-5 предложений).
-${category ? `Фокус на категории: ${category}` : ''}
+      const today = new Date().toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Europe/Moscow' });
 
-Данные за последние 30 дней:
+      const prompt = `Ты аналитик рынка тендеров на стройматериалы в России.
+Сегодня: ${today}. Все данные актуальны на эту дату.
+
+ВАЖНО: Используй ТОЛЬКО цифры из данных ниже. НЕ придумывай тендеры, номера закупок, организации, цены или даты. Если данных нет — скажи "данных недостаточно".
+${category ? `Анализ по категории: ${category}` : 'Общий анализ рынка строительных материалов'}
+
+Реальные данные из базы за последние 30 дней:
 - Активных тендеров: ${stats.totalActive}
 - Новых за неделю: ${stats.newThisWeek}
 - Средний бюджет: ${stats.avgBudget ? formatBudget(stats.avgBudget) : 'нет данных'}
@@ -130,23 +134,22 @@ ${category ? `Фокус на категории: ${category}` : ''}
 - Максимальный бюджет: ${stats.maxBudget ? formatBudget(stats.maxBudget) : 'нет данных'}
 
 Распределение по бюджету:
-- до 1 млн: ${stats.budgetRanges.under1m} тендеров
-- 1-5 млн: ${stats.budgetRanges.from1to5m} тендеров
-- 5-20 млн: ${stats.budgetRanges.from5to20m} тендеров
-- свыше 20 млн: ${stats.budgetRanges.over20m} тендеров
+- до 1 млн: ${stats.budgetRanges.under1m} тенд.
+- 1–5 млн: ${stats.budgetRanges.from1to5m} тенд.
+- 5–20 млн: ${stats.budgetRanges.from5to20m} тенд.
+- свыше 20 млн: ${stats.budgetRanges.over20m} тенд.
 
 Топ категории:
 ${topCats || 'нет данных'}
 
 Топ регионы: ${topRegs || 'нет данных'}
 
-Дай оценку активности рынка, укажи на возможности для поставщика и возможные риски.
-Ответь на русском языке, кратко и по делу.`;
+Напиши краткое аналитическое заключение (3–4 предложения) на основе ТОЛЬКО этих цифр: оцени активность, укажи наиболее востребованные категории/регионы, обозначь возможности для поставщика. Не придумывай конкретные тендеры.`;
 
       const response = await this.client.chat.complete({
         model: this.model,
         messages: [{ role: 'user', content: prompt }],
-        maxTokens: 400,
+        maxTokens: 450,
       });
 
       return response.choices?.[0]?.message?.content?.toString() ?? this.fallbackMarketAnalysis(stats);

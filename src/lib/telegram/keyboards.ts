@@ -1,9 +1,29 @@
 // Telegram inline and reply keyboards
 
 export const FILTER_CATEGORIES = [
-  'Бетон', 'Ракушечник', 'Кирпич', 'Цемент', 'Щебень',
-  'Арматура', 'Газобетон', 'Песок', 'ЖБИ', 'Кровля',
-  'Утеплитель', 'Асфальт', 'Трубы', 'Стройматериалы',
+  // Основные строительные материалы
+  'Бетон', 'Железобетон', 'ЖБИ', 'Газобетон', 'Пеноблок',
+  'Кирпич', 'Цемент', 'Сухие смеси', 'Ракушечник',
+  // Нерудные материалы
+  'Щебень', 'Гравий', 'Песок', 'Асфальт', 'Битум',
+  // Металл
+  'Арматура', 'Металлопрокат', 'Трубы стальные', 'Профнастил', 'Металлочерепица',
+  // Трубы и сантехника
+  'Трубы ПНД', 'Трубы ПВХ', 'Трубы чугунные', 'Сантехника',
+  // Кровля и изоляция
+  'Кровля', 'Рубероид', 'Мембрана кровельная', 'Утеплитель', 'Минвата', 'Пеноплекс', 'Гидроизоляция',
+  // Отделка
+  'Гипсокартон', 'Штукатурка', 'Шпаклёвка', 'Краска', 'Плитка', 'Керамогранит',
+  // Напольные покрытия
+  'Ламинат', 'Линолеум', 'Паркет',
+  // Окна и двери
+  'Окна ПВХ', 'Двери', 'Ворота',
+  // Дерево
+  'Пиломатериалы', 'Фанера', 'ДСП', 'ОСБ',
+  // Электрика
+  'Кабель', 'Электрика',
+  // Прочее
+  'Геотекстиль', 'Крепёж', 'Стройматериалы',
 ];
 
 export const FILTER_REGIONS = [
@@ -35,6 +55,43 @@ export const BUDGET_PRESETS = [
 ];
 
 type ButtonRow = Array<{ text: string; callback_data: string }>;
+
+export function marketCategorySelectKeyboard(userCategories: string[]) {
+  const rows: ButtonRow[] = [];
+
+  // Always show "General analysis" first
+  rows.push([{ text: '📋 Общий анализ (все категории)', callback_data: 'mcat_general' }]);
+
+  // Show user's selected categories (if any)
+  const cats = userCategories.length > 0 ? userCategories : FILTER_CATEGORIES.slice(0, 10);
+  for (let i = 0; i < cats.length; i += 2) {
+    const row: ButtonRow = [];
+    for (let j = i; j < Math.min(i + 2, cats.length); j++) {
+      row.push({ text: cats[j], callback_data: `mcat_${cats[j]}` });
+    }
+    rows.push(row);
+  }
+
+  // If user has custom categories set, offer to see all
+  if (userCategories.length > 0) {
+    rows.push([{ text: '📂 Все категории', callback_data: 'mcat_all_list' }]);
+  }
+
+  return { inline_keyboard: rows };
+}
+
+export function marketAllCategoriesKeyboard() {
+  const rows: ButtonRow[] = [];
+  rows.push([{ text: '◀️ Назад', callback_data: 'mcat_back' }]);
+  for (let i = 0; i < FILTER_CATEGORIES.length; i += 2) {
+    const row: ButtonRow = [];
+    for (let j = i; j < Math.min(i + 2, FILTER_CATEGORIES.length); j++) {
+      row.push({ text: FILTER_CATEGORIES[j], callback_data: `mcat_${FILTER_CATEGORIES[j]}` });
+    }
+    rows.push(row);
+  }
+  return { inline_keyboard: rows };
+}
 
 export function mainMenuKeyboard() {
   return {

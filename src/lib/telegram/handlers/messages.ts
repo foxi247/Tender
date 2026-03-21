@@ -91,7 +91,7 @@ export async function handleTextMessage(message: TelegramMessage): Promise<void>
 
     case 'market': {
       const { handleMarket } = await import('./commands');
-      return handleMarket(message, intent.category);
+      return handleMarket(message);
     }
 
     case 'unknown':

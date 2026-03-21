@@ -139,7 +139,7 @@ export async function upsertTender(tender: Omit<Tender, 'id' | 'created_at' | 'u
   return data;
 }
 
-export async function getMarketStats(category?: string, sources?: string[]): Promise<MarketStats> {
+export async function getMarketStats(category?: string, sources?: string[], regions?: string[]): Promise<MarketStats> {
   const supabase = createServiceClient();
   const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
   const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
@@ -155,6 +155,9 @@ export async function getMarketStats(category?: string, sources?: string[]): Pro
   }
   if (sources && sources.length > 0) {
     baseQuery = baseQuery.in('source', sources);
+  }
+  if (regions && regions.length > 0) {
+    baseQuery = baseQuery.in('region', regions);
   }
 
   const { data: tenders, error } = await baseQuery.order('published_at', { ascending: false });

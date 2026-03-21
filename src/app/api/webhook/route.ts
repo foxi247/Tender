@@ -40,12 +40,7 @@ async function processUpdate(update: TelegramUpdate): Promise<void> {
     if (text.startsWith('/start')) return handleStart(update.message);
     if (text.startsWith('/help')) return handleHelp(update.message);
     if (text.startsWith('/today')) return handleToday(update.message);
-    if (text.startsWith('/market')) {
-      const parts = text.split(' ');
-      const category = parts.length > 1 ? parts.slice(1).join(' ') : undefined;
-      return handleMarket(update.message, category);
-    }
-    if (text === '📊 Анализ рынка') return handleMarket(update.message, undefined);
+    if (text.startsWith('/market') || text === '📊 Анализ рынка') return handleMarket(update.message);
     if (text === '🤖 ИИ Чат') return handleAiChatOpen(update.message);
     if (text === '❌ Завершить ИИ Чат') return handleAiChatClose(update.message);
     if (text.startsWith('/favorites')) return handleFavorites(update.message);
