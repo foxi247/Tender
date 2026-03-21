@@ -167,7 +167,7 @@ async function fetchCategory(category: string) {
       'Accept-Language': 'ru-RU,ru;q=0.9',
       'Referer': 'https://zakupki.gov.ru/epz/order/extendedsearch/search.html',
     },
-    signal: AbortSignal.timeout(30000),
+    signal: AbortSignal.timeout(15000),
   });
 
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -199,8 +199,8 @@ Deno.serve(async (req: Request) => {
   let totalSaved = 0;
   const errors: string[] = [];
 
-  for (const category of SEARCH_CATEGORIES) {
-    try {
+  const categoryResults = await Promise.allSettled(
+    SEARCH_CATEGORIES.map(async (category) => {
       const items = await fetchCategory(category);
       const tenders = items.map(mapItem).filter(Boolean);
 
@@ -212,13 +212,19 @@ Deno.serve(async (req: Request) => {
         if (error) throw new Error(`Supabase: ${error.message}`);
       }
 
-      totalFetched += items.length;
-      totalSaved += tenders.length;
-      results[category] = { fetched: items.length, saved: tenders.length };
+      return { category, fetched: items.length, saved: tenders.length };
+    })
+  );
 
-      await new Promise((r) => setTimeout(r, 1000));
-    } catch (err) {
-      const msg = (err as Error).message;
+  for (const result of categoryResults) {
+    if (result.status === 'fulfilled') {
+      const { category, fetched, saved } = result.value;
+      totalFetched += fetched;
+      totalSaved += saved;
+      results[category] = { fetched, saved };
+    } else {
+      const msg = (result.reason as Error).message;
+      const category = SEARCH_CATEGORIES[categoryResults.indexOf(result)];
       errors.push(`${category}: ${msg}`);
       results[category] = { error: msg };
     }
