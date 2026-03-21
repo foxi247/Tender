@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { upsertTender } from '@/lib/tenders/service';
 import { ZakupkiGovSource } from '@/lib/tenders/sources/zakupki';
+import { syncAllPlatforms } from '@/lib/tenders/sources/rss-platforms';
 import { logger } from '@/lib/logger';
 import { cookies } from 'next/headers';
 
@@ -87,7 +88,11 @@ function parseRegion(description: string | null): string | null {
   const clean = (description || '').replace(/&lt;[^&]*&gt;/g, ' ').replace(/<[^>]+>/g, ' ');
   const m = clean.match(/Регион:\s*([^\n<]+)/i);
   if (!m) return null;
-  const parts = m[1].split('/').map((s: string) => s.trim()).filter(Boolean);
+  let raw = m[1];
+  // Cut off at the next field (Цена:, Начало:, Окончание:, Тип:)
+  const cutIdx = raw.search(/\s+(?:Цена|Начало|Окончание|Тип):/i);
+  if (cutIdx > 0) raw = raw.slice(0, cutIdx);
+  const parts = raw.split('/').map((s: string) => s.trim()).filter(Boolean);
   return parts[parts.length - 1] || parts[0] || null;
 }
 
@@ -186,8 +191,16 @@ async function runSync(): Promise<NextResponse> {
     logger.warn('Zakupki sync failed (non-fatal)', { err: err instanceof Error ? err.message : String(err) });
   }
 
-  logger.info('Sync done', { fetched: items.length, matched: relevant.length, saved, zakupkiSaved, ms: Date.now() - startedAt });
-  return NextResponse.json({ ok: true, fetched: items.length, matched: relevant.length, saved, zakupkiSaved });
+  // Sync from additional RSS platforms (fault-tolerant)
+  let platformResults: Record<string, { fetched: number; saved: number }> = {};
+  try {
+    platformResults = await syncAllPlatforms();
+  } catch (err) {
+    logger.warn('Platform RSS sync failed (non-fatal)', { err: err instanceof Error ? err.message : String(err) });
+  }
+
+  logger.info('Sync done', { fetched: items.length, matched: relevant.length, saved, zakupkiSaved, platforms: platformResults, ms: Date.now() - startedAt });
+  return NextResponse.json({ ok: true, fetched: items.length, matched: relevant.length, saved, zakupkiSaved, platforms: platformResults });
 }
 
 export async function GET(req: NextRequest): Promise<NextResponse> {

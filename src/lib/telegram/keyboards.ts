@@ -17,6 +17,11 @@ export const FILTER_REGIONS = [
 export const FILTER_PLATFORMS: Array<{ id: string; label: string }> = [
   { id: 'bicotender', label: 'Bico' },
   { id: 'zakupki', label: 'Zakupki.gov' },
+  { id: 'rts', label: 'РТС-тендер' },
+  { id: 'otc', label: 'OTC.ru' },
+  { id: 'sberbank', label: 'Сбербанк-АСТ' },
+  { id: 'tender_pro', label: 'Tender.pro' },
+  { id: 'eetp', label: 'ЕЭТП' },
 ];
 
 export const BUDGET_PRESETS = [
@@ -152,12 +157,18 @@ export function filterMainMenuKeyboard(
 }
 
 export function filterPlatformsKeyboard(selectedSources: string[]) {
-  const rows: ButtonRow[] = FILTER_PLATFORMS.map((p) => [
-    {
-      text: `${selectedSources.includes(p.id) ? '✅' : '◻️'} ${p.label}`,
-      callback_data: `fpt_${p.id}`,
-    },
-  ]);
+  const rows: ButtonRow[] = [];
+  for (let i = 0; i < FILTER_PLATFORMS.length; i += 2) {
+    const row: ButtonRow = [];
+    for (let j = i; j < Math.min(i + 2, FILTER_PLATFORMS.length); j++) {
+      const p = FILTER_PLATFORMS[j];
+      row.push({
+        text: `${selectedSources.includes(p.id) ? '✅' : '◻️'} ${p.label}`,
+        callback_data: `fpt_${p.id}`,
+      });
+    }
+    rows.push(row);
+  }
   rows.push([{ text: '◀️ К фильтрам', callback_data: 'fm' }]);
   return { inline_keyboard: rows };
 }

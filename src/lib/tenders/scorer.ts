@@ -13,17 +13,22 @@ function calculateScore(tender: Tender, preferences: UserPreferences): ScoreResu
   const regions = (preferences.regions as string[]) ?? [];
   const keywords = (preferences.keywords as string[]) ?? [];
 
-  // +40 — category match
-  if (tender.category && categories.length > 0) {
-    const matched = categories.some(
+  // Category matching — HARD FILTER when categories selected
+  if (categories.length > 0) {
+    const tenderText = `${tender.title} ${tender.category ?? ''}`.toLowerCase();
+    const categoryMatched = categories.some(
       (cat) =>
-        tender.category!.toLowerCase().includes(cat.toLowerCase()) ||
-        cat.toLowerCase().includes(tender.category!.toLowerCase())
+        tenderText.includes(cat.toLowerCase()) ||
+        (tender.category?.toLowerCase().includes(cat.toLowerCase()) ?? false)
     );
-    if (matched) {
+    if (categoryMatched) {
       score += 40;
-      reasons.push(`Совпадает категория: ${tender.category}`);
+      reasons.push(`Совпадает категория: ${tender.category ?? 'по запросу'}`);
+    } else if (tender.category) {
+      // Tender has a different known category — exclude it
+      return { score: -1, reasons: [] };
     }
+    // If tender.category is null — let it through (unknown, might be relevant)
   }
 
   // +25 — region match

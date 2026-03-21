@@ -3,6 +3,7 @@ import { getUserStats } from '@/lib/users/service';
 import { createServiceClient } from '@/lib/supabase/server';
 import { formatMoscow } from '@/lib/utils/date';
 import Link from 'next/link';
+import BroadcastKeyboardButton from './BroadcastKeyboardButton';
 
 export const dynamic = 'force-dynamic';
 
@@ -128,6 +129,7 @@ export default async function AdminDashboard() {
           <Link href="/admin/digests" className="btn-secondary">
             📊 История рассылок
           </Link>
+          <BroadcastKeyboardButton />
         </div>
       </div>
 
