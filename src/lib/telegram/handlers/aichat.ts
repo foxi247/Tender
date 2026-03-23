@@ -22,15 +22,72 @@ const SEARCH_TRIGGERS = [
   'закупки по', 'закупки на', 'закупку', 'тендер',
 ];
 
+/**
+ * Stem → canonical category mapping.
+ * Handles Russian declension: "ракушку кормовую" → "Ракушка кормовая"
+ */
+const STEM_TO_CATEGORY: Array<{ stems: string[]; category: string }> = [
+  { stems: ['ракушечник', 'ракушняк'], category: 'Ракушечник' },
+  { stems: ['ракушк корм', 'корм ракушк', 'кормов ракушк', 'ракушк дроблен', 'ракушку корм'], category: 'Ракушка кормовая' },
+  { stems: ['ракушк'], category: 'Ракушечник' },
+  { stems: ['бетон'], category: 'Бетон' },
+  { stems: ['железобетон', 'жби'], category: 'ЖБИ' },
+  { stems: ['газобетон', 'газоблок', 'газосиликат'], category: 'Газобетон' },
+  { stems: ['пеноблок', 'пенобетон'], category: 'Пеноблок' },
+  { stems: ['кирпич'], category: 'Кирпич' },
+  { stems: ['цемент'], category: 'Цемент' },
+  { stems: ['щебен'], category: 'Щебень' },
+  { stems: ['гравий', 'гравий'], category: 'Гравий' },
+  { stems: ['песок', 'песч'], category: 'Песок' },
+  { stems: ['асфальт'], category: 'Асфальт' },
+  { stems: ['арматур'], category: 'Арматура' },
+  { stems: ['металлопрокат', 'металлоконструкц'], category: 'Металлопрокат' },
+  { stems: ['профнастил'], category: 'Профнастил' },
+  { stems: ['металлочерепица', 'металлочерепиц'], category: 'Металлочерепица' },
+  { stems: ['кровл', 'рубероид'], category: 'Кровля' },
+  { stems: ['утеплитель', 'утеплител', 'минват', 'минеральн вата', 'базальтов'], category: 'Утеплитель' },
+  { stems: ['пеноплекс', 'эппс'], category: 'Пеноплекс' },
+  { stems: ['гипсокартон', 'гкл'], category: 'Гипсокартон' },
+  { stems: ['штукатурк'], category: 'Штукатурка' },
+  { stems: ['труб пнд', 'трубы пнд', 'пнд труб'], category: 'Трубы ПНД' },
+  { stems: ['труб пвх', 'трубы пвх'], category: 'Трубы ПВХ' },
+  { stems: ['пиломатериал', 'доск обрезн', 'брус строит'], category: 'Пиломатериалы' },
+  { stems: ['фанер'], category: 'Фанера' },
+  { stems: ['кабел', 'провод электр'], category: 'Кабель' },
+  { stems: ['керамогранит'], category: 'Керамогранит' },
+  { stems: ['плитк'], category: 'Плитка' },
+  { stems: ['геотекстил'], category: 'Геотекстиль' },
+  { stems: ['стройматериал', 'строительн материал', 'строймат'], category: 'Стройматериалы' },
+];
+
 function isTenderSearchRequest(text: string): boolean {
   const lower = text.toLowerCase();
-  return SEARCH_TRIGGERS.some((t) => lower.includes(t));
+  if (SEARCH_TRIGGERS.some((t) => lower.includes(t))) return true;
+  // Also treat as search if message contains a material keyword (even without trigger word)
+  // e.g. "ракушка кормовая в Дагестане" → automatically searches
+  return STEM_TO_CATEGORY.some(({ stems }) => stems.some((s) => lower.includes(s)));
 }
 
-/** Extract category keywords from user message */
+/** Extract category keywords from user message — handles Russian declension via stems */
 function extractCategories(text: string): string[] {
   const lower = text.toLowerCase();
-  return FILTER_CATEGORIES.filter((cat) => lower.includes(cat.toLowerCase()));
+  const found = new Set<string>();
+
+  // 1. Stem-based matching (handles declension)
+  for (const { stems, category } of STEM_TO_CATEGORY) {
+    if (stems.some((s) => lower.includes(s))) {
+      found.add(category);
+    }
+  }
+
+  // 2. Exact category name matching (as fallback)
+  for (const cat of FILTER_CATEGORIES) {
+    if (lower.includes(cat.toLowerCase())) {
+      found.add(cat);
+    }
+  }
+
+  return [...found];
 }
 
 /** Extract region keywords from user message */

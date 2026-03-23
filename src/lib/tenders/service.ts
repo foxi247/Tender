@@ -95,12 +95,16 @@ export async function getRelevantTendersForUser(
 
   const hiddenIds = (hiddenActions ?? []).map((a) => a.tender_id);
   const preferredSources = (preferences.preferred_sources as string[] | undefined) ?? [];
+  const now = new Date().toISOString();
+  // Published in last 90 days AND (deadline hasn't passed OR no deadline set)
+  const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
 
   let q = supabase
     .from('tenders')
     .select('*')
     .eq('status', 'active')
-    .gte('published_at', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString())
+    .gte('published_at', ninetyDaysAgo)
+    .or(`deadline_at.gt.${now},deadline_at.is.null`)
     .order('published_at', { ascending: false })
     .limit(200);
 
@@ -133,24 +137,26 @@ export async function searchTendersByText(params: {
 }): Promise<ScoredTender[]> {
   const supabase = createServiceClient();
   const { categories = [], regions = [], limit = 10 } = params;
+  const now = new Date().toISOString();
+  const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
 
   let query = supabase
     .from('tenders')
     .select('*')
     .eq('status', 'active')
-    .gte('published_at', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString())
+    .gte('published_at', ninetyDaysAgo)
+    .or(`deadline_at.gt.${now},deadline_at.is.null`)
     .order('published_at', { ascending: false })
     .limit(200);
 
-  // Filter by category if specified (DB column exact match or title ilike)
+  // Filter by category: exact category match OR title/description contains keyword
   if (categories.length > 0) {
-    // Use OR: category IN (...) OR title ilike any
     const catFilter = categories.map((c) => `category.eq.${c}`).join(',');
     const titleFilter = categories.map((c) => `title.ilike.%${c}%`).join(',');
     query = query.or(`${catFilter},${titleFilter}`);
   }
 
-  // Filter by region if specified
+  // Filter by region
   if (regions.length > 0) {
     const regFilter = regions.map((r) => `region.ilike.%${r}%`).join(',');
     query = query.or(regFilter);
@@ -191,17 +197,20 @@ export async function upsertTender(tender: Omit<Tender, 'id' | 'created_at' | 'u
 
 export async function getMarketStats(category?: string, sources?: string[], regions?: string[]): Promise<MarketStats> {
   const supabase = createServiceClient();
-  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  const now = new Date().toISOString();
+  const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
   const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
   let baseQuery = supabase
     .from('tenders')
     .select('budget, category, region, published_at')
     .eq('status', 'active')
-    .gte('published_at', thirtyDaysAgo);
+    .gte('published_at', ninetyDaysAgo)
+    .or(`deadline_at.gt.${now},deadline_at.is.null`);
 
   if (category) {
-    baseQuery = baseQuery.eq('category', category);
+    // Search both by DB category column AND title keyword — broader coverage
+    baseQuery = baseQuery.or(`category.eq.${category},title.ilike.%${category}%`);
   }
   if (sources && sources.length > 0) {
     baseQuery = baseQuery.in('source', sources);
