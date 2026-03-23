@@ -10,32 +10,112 @@ if (!SUPABASE_URL || !SUPABASE_KEY) {
   process.exit(1);
 }
 
-// Multiple RSS feeds: bicotender (main + keyword searches) + РТС-тендер
+// ALL 25 categories from bicotender.ru — each feed returns up to 100 active tenders
+// Total: ~2500 unique tenders per sync run
 const RSS_FEEDS = [
+  // Main feed (latest across all categories)
   { url: 'https://bicotender.ru/rss', source: 'bicotender' },
-  // Keyword-specific bico feeds for materials we care most about
-  { url: 'https://bicotender.ru/rss?search=%D1%80%D0%B0%D0%BA%D1%83%D1%88%D0%B5%D1%87%D0%BD%D0%B8%D0%BA', source: 'bicotender' }, // ракушечник
-  { url: 'https://bicotender.ru/rss?search=%D1%80%D0%B0%D0%BA%D1%83%D1%88%D0%BA%D0%B0', source: 'bicotender' },                   // ракушка
-  { url: 'https://bicotender.ru/rss?search=%D0%B1%D0%B5%D1%82%D0%BE%D0%BD', source: 'bicotender' },                               // бетон
-  { url: 'https://bicotender.ru/rss?search=%D0%BA%D0%B8%D1%80%D0%BF%D0%B8%D1%87', source: 'bicotender' },                         // кирпич
-  { url: 'https://bicotender.ru/rss?search=%D1%89%D0%B5%D0%B1%D0%B5%D0%BD%D1%8C', source: 'bicotender' },                         // щебень
-  { url: 'https://bicotender.ru/rss?search=%D0%B0%D1%80%D0%BC%D0%B0%D1%82%D1%83%D1%80%D0%B0', source: 'bicotender' },             // арматура
-  // РТС-тендер public RSS
+  // All 25 bico industry categories (?field=slug)
+  { url: 'https://bicotender.ru/rss?field=stroitelstvo-nedvizhimost-i-arhitektura', source: 'bicotender' },   // Строительство
+  { url: 'https://bicotender.ru/rss?field=metally-metalloizdeliya', source: 'bicotender' },                   // Металлы
+  { url: 'https://bicotender.ru/rss?field=mashinostroenie', source: 'bicotender' },                           // Машиностроение
+  { url: 'https://bicotender.ru/rss?field=elektrotehnika', source: 'bicotender' },                            // Электротехника
+  { url: 'https://bicotender.ru/rss?field=toplivo-i-energetika', source: 'bicotender' },                      // Топливо и энергетика
+  { url: 'https://bicotender.ru/rss?field=himiya', source: 'bicotender' },                                    // Химия
+  { url: 'https://bicotender.ru/rss?field=syrye-polufabrikaty', source: 'bicotender' },                       // Сырьё, полуфабрикаты
+  { url: 'https://bicotender.ru/rss?field=prodovolstvie-pischevaya-promyshlennost', source: 'bicotender' },   // Продовольствие
+  { url: 'https://bicotender.ru/rss?field=selskoe-hozyaystvo', source: 'bicotender' },                        // Сельское хозяйство
+  { url: 'https://bicotender.ru/rss?field=legkaya-promyshlennost', source: 'bicotender' },                    // Лёгкая промышленность
+  { url: 'https://bicotender.ru/rss?field=derevoobrabotka-les', source: 'bicotender' },                       // Дерево, лес
+  { url: 'https://bicotender.ru/rss?field=transport', source: 'bicotender' },                                 // Транспорт
+  { url: 'https://bicotender.ru/rss?field=perevozki-logistika-tamozhnya', source: 'bicotender' },             // Перевозки, логистика
+  { url: 'https://bicotender.ru/rss?field=medicina-farmakologiya', source: 'bicotender' },                    // Медицина
+  { url: 'https://bicotender.ru/rss?field=it-kompyutery-svyaz', source: 'bicotender' },                       // IT, связь
+  { url: 'https://bicotender.ru/rss?field=bezopasnost', source: 'bicotender' },                               // Безопасность
+  { url: 'https://bicotender.ru/rss?field=ofis-dom', source: 'bicotender' },                                  // Офис, дом
+  { url: 'https://bicotender.ru/rss?field=bumazhnoe-proizvodstvo-tara-i-upakovka', source: 'bicotender' },    // Бумага, упаковка
+  { url: 'https://bicotender.ru/rss?field=nauka-issledovaniya-obrazovanie', source: 'bicotender' },           // Наука, образование
+  { url: 'https://bicotender.ru/rss?field=socialnye-uslugi', source: 'bicotender' },                          // Социальные услуги
+  { url: 'https://bicotender.ru/rss?field=sport-otdyh-turizm', source: 'bicotender' },                       // Спорт, туризм
+  { url: 'https://bicotender.ru/rss?field=ekologiya', source: 'bicotender' },                                 // Экология
+  { url: 'https://bicotender.ru/rss?field=izdatelstvo-poligrafiya', source: 'bicotender' },                   // Издательство
+  { url: 'https://bicotender.ru/rss?field=biznes-finansy-strahovanie-marketing-i-reklama', source: 'bicotender' }, // Бизнес, финансы
+  { url: 'https://bicotender.ru/rss?field=drugoe', source: 'bicotender' },                                    // Прочее
+  // Other platforms (fault-tolerant)
   { url: 'https://www.rts-tender.ru/rss/tender-list.aspx', source: 'rts' },
-  // ЗаказГосударства (aggregator, free RSS)
   { url: 'https://zakaz.gov.ru/zakaz/rss/pub', source: 'zakupki' },
 ];
 
-// Maps bico RSS category names → our standard category names
-const RSS_CATEGORY_NORMALIZE = {
-  'строительные материалы': 'Стройматериалы',
-  'строительство': 'Стройматериалы',
-  'ремонтные и строительные': 'Стройматериалы',
-  'дороги, мосты': 'Асфальт',
-  'электротехника': 'Кабель',
-  'сантехника': 'Сантехника',
-  'кровельные материалы': 'Кровля',
-};
+// Maps bico hierarchical category paths → our standardized category names.
+// Bico sends: "Строительство, недвижимость и архитектура / Строительные материалы..."
+// We match substrings (lowercase) of that path.
+const BICO_CATEGORY_RULES = [
+  // ── Construction materials (most specific first) ──────────────────────────
+  { match: 'строительные материалы',          cat: 'Стройматериалы' },
+  { match: 'ремонтные и строительные',        cat: 'Стройматериалы' },
+  { match: 'дороги, мосты',                   cat: 'Асфальт' },
+  { match: 'полы, окна и двери',              cat: 'Окна ПВХ' },
+  { match: 'водолазные работы',               cat: 'Стройматериалы' },
+  { match: 'подготовка строительного',        cat: 'Стройматериалы' },
+  { match: 'строительство, ремонт и обслуж',  cat: 'Стройматериалы' },
+  { match: 'строительство, недвижимость',     cat: 'Стройматериалы' },
+  // ── Metals ────────────────────────────────────────────────────────────────
+  { match: 'металлы, металлоизделия',         cat: 'Металлопрокат' },
+  { match: 'металлоконструкц',                cat: 'Металлопрокат' },
+  { match: 'трубы и арматура',                cat: 'Арматура' },
+  { match: 'крепёжные изделия',               cat: 'Крепёж' },
+  // ── Electrical ────────────────────────────────────────────────────────────
+  { match: 'электротехника',                  cat: 'Электрика' },
+  { match: 'кабел',                           cat: 'Кабель' },
+  { match: 'светотехник',                     cat: 'Электрика' },
+  // ── Raw materials / Chemistry ─────────────────────────────────────────────
+  { match: 'сырьё',                           cat: 'Сырьё' },
+  { match: 'сырье',                           cat: 'Сырьё' },
+  { match: 'полуфабрикаты',                   cat: 'Сырьё' },
+  { match: 'химия',                           cat: 'Химия' },
+  { match: 'нефтепродукты',                   cat: 'Битум' },
+  // ── Fuel & Energy ─────────────────────────────────────────────────────────
+  { match: 'топливо',                         cat: 'Топливо' },
+  { match: 'нефть и газ',                     cat: 'Топливо' },
+  { match: 'уголь',                           cat: 'Топливо' },
+  { match: 'энергетика',                      cat: 'Электрика' },
+  // ── Agriculture & Food ────────────────────────────────────────────────────
+  { match: 'сельское хозяйство',              cat: 'Сельское хозяйство' },
+  { match: 'продовольствие',                  cat: 'Продовольствие' },
+  { match: 'пищевая промышленность',          cat: 'Продовольствие' },
+  { match: 'корм',                            cat: 'Сельское хозяйство' },
+  // ── Machinery / Transport ─────────────────────────────────────────────────
+  { match: 'машиностроение',                  cat: 'Оборудование' },
+  { match: 'промышленное оборудование',       cat: 'Оборудование' },
+  { match: 'транспортные средства',           cat: 'Транспорт' },
+  { match: 'транспорт',                       cat: 'Транспорт' },
+  { match: 'перевозки',                       cat: 'Транспорт' },
+  // ── Wood & Paper ──────────────────────────────────────────────────────────
+  { match: 'деревообработка',                 cat: 'Пиломатериалы' },
+  { match: 'лес',                             cat: 'Пиломатериалы' },
+  { match: 'бумажное производство',           cat: 'Бумага' },
+  { match: 'тара и упаковка',                 cat: 'Упаковка' },
+  // ── Textiles ──────────────────────────────────────────────────────────────
+  { match: 'лёгкая промышленность',           cat: 'Текстиль' },
+  { match: 'легкая промышленность',           cat: 'Текстиль' },
+  { match: 'одежда',                          cat: 'Текстиль' },
+  { match: 'ткани',                           cat: 'Текстиль' },
+  // ── IT & Services ─────────────────────────────────────────────────────────
+  { match: 'it, компьютеры',                  cat: 'IT' },
+  { match: 'информационные технологии',       cat: 'IT' },
+  { match: 'медицина',                        cat: 'Медицина' },
+  { match: 'фармакология',                    cat: 'Медицина' },
+  { match: 'безопасность',                    cat: 'Безопасность' },
+  { match: 'наука',                           cat: 'Образование' },
+  { match: 'образование',                     cat: 'Образование' },
+  { match: 'социальные услуги',               cat: 'Социальные услуги' },
+  { match: 'офис',                            cat: 'Офис' },
+  { match: 'спорт',                           cat: 'Спорт' },
+  { match: 'экология',                        cat: 'Экология' },
+  { match: 'бизнес',                          cat: 'Услуги' },
+  { match: 'финансы',                         cat: 'Услуги' },
+  { match: 'издательство',                    cat: 'Услуги' },
+];
 
 const CATEGORY_MAP = [
   { kw: ['железобетон'], cat: 'Железобетон' },
@@ -90,22 +170,32 @@ const CATEGORY_MAP = [
 ];
 
 /**
- * Infer a standardized category from title keywords first,
- * then fall back to normalized RSS category, then 'Прочее'.
+ * Infer category:
+ * 1. Title keyword match (CATEGORY_MAP) — most specific
+ * 2. Bico hierarchical category path match (BICO_CATEGORY_RULES)
+ * 3. Use subcategory part of bico path as-is
+ * 4. 'Прочее'
  */
 function inferCategory(title, rssCategory) {
+  // 1. Title keywords — highest precision
   const lower = title.toLowerCase();
   for (const { kw, cat } of CATEGORY_MAP) {
     if (kw.some(k => lower.includes(k))) return cat;
   }
-  // Normalize RSS category if provided
+
+  // 2. Match bico's hierarchical category path
   if (rssCategory) {
-    const normalized = RSS_CATEGORY_NORMALIZE[rssCategory.toLowerCase().trim()];
-    if (normalized) return normalized;
-    // Use raw RSS category as-is (capitalized) if it's meaningful
-    const raw = rssCategory.trim();
-    if (raw.length > 2 && raw.length < 60) return raw;
+    const catLower = rssCategory.toLowerCase();
+    for (const { match, cat } of BICO_CATEGORY_RULES) {
+      if (catLower.includes(match)) return cat;
+    }
+
+    // 3. Use the subcategory part (after "/") if present and short enough
+    const parts = rssCategory.split('/').map(p => p.trim()).filter(Boolean);
+    const sub = parts[parts.length - 1];  // last part = most specific
+    if (sub && sub.length >= 3 && sub.length <= 100) return sub;
   }
+
   return 'Прочее';
 }
 
