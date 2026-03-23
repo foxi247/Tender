@@ -10,50 +10,32 @@ if (!SUPABASE_URL || !SUPABASE_KEY) {
   process.exit(1);
 }
 
-// Multiple RSS feeds: bicotender (main + category pages) + РТС-тендер
+// Multiple RSS feeds: bicotender (main + keyword searches) + РТС-тендер
 const RSS_FEEDS = [
   { url: 'https://bicotender.ru/rss', source: 'bicotender' },
-  // Bicotender category-filtered pages (same aggregator, broader coverage per keyword)
-  { url: 'https://bicotender.ru/rss?cat=building_materials', source: 'bicotender' },
-  { url: 'https://bicotender.ru/rss?cat=construction', source: 'bicotender' },
+  // Keyword-specific bico feeds for materials we care most about
+  { url: 'https://bicotender.ru/rss?search=%D1%80%D0%B0%D0%BA%D1%83%D1%88%D0%B5%D1%87%D0%BD%D0%B8%D0%BA', source: 'bicotender' }, // ракушечник
+  { url: 'https://bicotender.ru/rss?search=%D1%80%D0%B0%D0%BA%D1%83%D1%88%D0%BA%D0%B0', source: 'bicotender' },                   // ракушка
+  { url: 'https://bicotender.ru/rss?search=%D0%B1%D0%B5%D1%82%D0%BE%D0%BD', source: 'bicotender' },                               // бетон
+  { url: 'https://bicotender.ru/rss?search=%D0%BA%D0%B8%D1%80%D0%BF%D0%B8%D1%87', source: 'bicotender' },                         // кирпич
+  { url: 'https://bicotender.ru/rss?search=%D1%89%D0%B5%D0%B1%D0%B5%D0%BD%D1%8C', source: 'bicotender' },                         // щебень
+  { url: 'https://bicotender.ru/rss?search=%D0%B0%D1%80%D0%BC%D0%B0%D1%82%D1%83%D1%80%D0%B0', source: 'bicotender' },             // арматура
   // РТС-тендер public RSS
   { url: 'https://www.rts-tender.ru/rss/tender-list.aspx', source: 'rts' },
   // ЗаказГосударства (aggregator, free RSS)
   { url: 'https://zakaz.gov.ru/zakaz/rss/pub', source: 'zakupki' },
 ];
 
-const CONSTRUCTION_KEYWORDS = [
-  'бетон', 'железобетон', 'жби',
-  'ракушечник', 'ракушка', 'ракушняк', 'кормовая ракушка', 'ракушка кормовая',
-  'кирпич',
-  'цемент',
-  'щебень', 'гравий',
-  'арматура',
-  'газобетон', 'газоблок', 'пеноблок',
-  'песок строительный', 'речной песок', 'карьерный песок', 'намывной песок',
-  'стройматериал',
-  'асфальт', 'асфальтобетон',
-  'труб пнд', 'труб пвх', 'трубопровод',
-  'металлочерепица',
-  'профнастил',
-  'утеплитель', 'минвата', 'базальтов',
-  'блок фундаментный', 'плита перекрытия', 'фундаментный блок',
-  'кровельн',
-  'гипсокартон',
-  'пиломатериал', 'доска обрезн', 'брус строит',
-  'керамогранит', 'плитка керамич',
-  'геотекстиль',
-  'известь', 'известняк',
-  'мел кормовой', 'мел технический',
-  'соль техническая', 'соль поваренная',
-];
-
-const CONSTRUCTION_CATEGORIES = [
-  'строительные материалы',
-  'строительство',
-  'дороги, мосты',
-  'ремонтные и строительные',
-];
+// Maps bico RSS category names → our standard category names
+const RSS_CATEGORY_NORMALIZE = {
+  'строительные материалы': 'Стройматериалы',
+  'строительство': 'Стройматериалы',
+  'ремонтные и строительные': 'Стройматериалы',
+  'дороги, мосты': 'Асфальт',
+  'электротехника': 'Кабель',
+  'сантехника': 'Сантехника',
+  'кровельные материалы': 'Кровля',
+};
 
 const CATEGORY_MAP = [
   { kw: ['железобетон'], cat: 'Железобетон' },
@@ -107,21 +89,24 @@ const CATEGORY_MAP = [
   { kw: ['стройматериал', 'строительный материал'], cat: 'Стройматериалы' },
 ];
 
-function isRelevant(title, category) {
-  const titleLower = title.toLowerCase();
-  const catLower = (category || '').toLowerCase();
-
-  if (CONSTRUCTION_KEYWORDS.some(kw => titleLower.includes(kw))) return true;
-  if (CONSTRUCTION_CATEGORIES.some(kw => catLower.includes(kw))) return true;
-  return false;
-}
-
-function inferCategory(title) {
+/**
+ * Infer a standardized category from title keywords first,
+ * then fall back to normalized RSS category, then 'Прочее'.
+ */
+function inferCategory(title, rssCategory) {
   const lower = title.toLowerCase();
   for (const { kw, cat } of CATEGORY_MAP) {
     if (kw.some(k => lower.includes(k))) return cat;
   }
-  return 'Стройматериалы';
+  // Normalize RSS category if provided
+  if (rssCategory) {
+    const normalized = RSS_CATEGORY_NORMALIZE[rssCategory.toLowerCase().trim()];
+    if (normalized) return normalized;
+    // Use raw RSS category as-is (capitalized) if it's meaningful
+    const raw = rssCategory.trim();
+    if (raw.length > 2 && raw.length < 60) return raw;
+  }
+  return 'Прочее';
 }
 
 function getXmlField(xml, tag) {
@@ -197,8 +182,6 @@ function parseRSS(xml) {
 function mapItem(item, feedSource = 'bicotender') {
   const { title, link, description, category, pubDate } = item;
 
-  if (!isRelevant(title, category)) return null;
-
   // Extract ID from URL or description
   const idMatch = link && (
     link.match(/tender(\d+)/) ||     // bicotender
@@ -206,14 +189,14 @@ function mapItem(item, feedSource = 'bicotender') {
     link.match(/\/(\d{15,})/)         // EIS 19-digit number
   );
   const tenderId = idMatch ? idMatch[1] : parseNumber(description);
-  if (!tenderId) return null;
+  if (!tenderId) return null;  // skip if we can't identify the tender
 
   return {
     external_id: `${feedSource}_${tenderId}`,
     source: feedSource,
     title,
     description: null,
-    category: inferCategory(title),
+    category: inferCategory(title, category),  // RSS category as fallback
     region: parseRegion(description),
     buyer_name: null,
     law_type: parseLawType(description),
@@ -290,7 +273,7 @@ async function main() {
           return true;
         });
 
-      console.log(`  Matched ${mapped.length} construction tenders`);
+      console.log(`  Saved ${mapped.length} tenders (all categories)`);
       allTenders.push(...mapped);
     } catch (err) {
       console.warn(`  Failed: ${err.message} (skipping this feed)`);

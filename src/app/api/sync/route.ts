@@ -8,38 +8,16 @@ import { cookies } from 'next/headers';
 const CRON_SECRET = process.env.CRON_SECRET;
 const RSS_URL = 'https://bicotender.ru/rss';
 
-const CONSTRUCTION_KEYWORDS = [
-  'бетон', 'железобетон', 'жби',
-  'ракушечник', 'ракушка', 'ракушняк', 'кормовая ракушка', 'ракушка кормовая',
-  'кирпич',
-  'цемент',
-  'щебень', 'гравий',
-  'арматура',
-  'газобетон', 'газоблок', 'пеноблок',
-  'песок строительный', 'речной песок', 'карьерный песок', 'намывной песок',
-  'стройматериал',
-  'асфальт', 'асфальтобетон',
-  'труб пнд', 'труб пвх', 'трубопровод',
-  'металлочерепица',
-  'профнастил',
-  'утеплитель', 'минвата', 'базальтов',
-  'блок фундаментный', 'плита перекрытия', 'фундаментный блок',
-  'кровельн',
-  'гипсокартон',
-  'пиломатериал',
-  'керамогранит',
-  'геотекстиль',
-  'известь', 'известняк',
-  'мел кормовой',
-  'соль техническая',
-];
-
-const CONSTRUCTION_CATEGORIES = [
-  'строительные материалы',
-  'строительство',
-  'дороги, мосты',
-  'ремонтные и строительные',
-];
+// Maps bico RSS category names → our standard category names
+const RSS_CATEGORY_NORMALIZE: Record<string, string> = {
+  'строительные материалы': 'Стройматериалы',
+  'строительство': 'Стройматериалы',
+  'ремонтные и строительные': 'Стройматериалы',
+  'дороги, мосты': 'Асфальт',
+  'электротехника': 'Кабель',
+  'сантехника': 'Сантехника',
+  'кровельные материалы': 'Кровля',
+};
 
 const CATEGORY_MAP: Array<{ kw: string[]; cat: string }> = [
   { kw: ['бетон', 'железобетон', 'жби'], cat: 'Бетон' },
@@ -58,19 +36,22 @@ const CATEGORY_MAP: Array<{ kw: string[]; cat: string }> = [
   { kw: ['труб'], cat: 'Трубы' },
 ];
 
-function isRelevant(title: string, category: string | null): boolean {
-  const t = title.toLowerCase();
-  const c = (category || '').toLowerCase();
-  return CONSTRUCTION_KEYWORDS.some(kw => t.includes(kw))
-    || CONSTRUCTION_CATEGORIES.some(kw => c.includes(kw));
-}
-
-function inferCategory(title: string): string {
+/**
+ * Infer a standardized category from title keywords first,
+ * then fall back to normalized RSS category, then 'Прочее'.
+ */
+function inferCategory(title: string, rssCategory: string | null): string {
   const lower = title.toLowerCase();
   for (const { kw, cat } of CATEGORY_MAP) {
     if (kw.some(k => lower.includes(k))) return cat;
   }
-  return 'Стройматериалы';
+  if (rssCategory) {
+    const normalized = RSS_CATEGORY_NORMALIZE[rssCategory.toLowerCase().trim()];
+    if (normalized) return normalized;
+    const raw = rssCategory.trim();
+    if (raw.length > 2 && raw.length < 60) return raw;
+  }
+  return 'Прочее';
 }
 
 function getXmlField(xml: string, tag: string): string | null {
@@ -156,10 +137,11 @@ async function runSync(): Promise<NextResponse> {
   const xml = await res.text();
 
   const items = parseRSS(xml);
-  const relevant = items.filter(i => isRelevant(i.title, i.category));
+  // Save ALL tenders from bico — no keyword filter. Filtering by category/interest
+  // happens at query time via user preferences and the scorer.
 
   let saved = 0;
-  for (const item of relevant) {
+  for (const item of items) {
     const idMatch = item.link?.match(/tender(\d+)/);
     const bicotenderId = idMatch?.[1];
     if (!bicotenderId) continue;
@@ -169,7 +151,7 @@ async function runSync(): Promise<NextResponse> {
       source: 'bicotender',
       title: item.title,
       description: null,
-      category: inferCategory(item.title),
+      category: inferCategory(item.title, item.category),  // RSS category as fallback
       region: parseRegion(item.description),
       buyer_name: null,
       law_type: parseLawType(item.description),
@@ -210,8 +192,8 @@ async function runSync(): Promise<NextResponse> {
     logger.warn('Platform RSS sync failed (non-fatal)', { err: err instanceof Error ? err.message : String(err) });
   }
 
-  logger.info('Sync done', { fetched: items.length, matched: relevant.length, saved, zakupkiSaved, platforms: platformResults, ms: Date.now() - startedAt });
-  return NextResponse.json({ ok: true, fetched: items.length, matched: relevant.length, saved, zakupkiSaved, platforms: platformResults });
+  logger.info('Sync done', { fetched: items.length, saved, zakupkiSaved, platforms: platformResults, ms: Date.now() - startedAt });
+  return NextResponse.json({ ok: true, fetched: items.length, saved, zakupkiSaved, platforms: platformResults });
 }
 
 export async function GET(req: NextRequest): Promise<NextResponse> {
