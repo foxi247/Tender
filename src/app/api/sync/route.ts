@@ -295,19 +295,39 @@ async function runSync(): Promise<NextResponse> {
     logger.warn('Platform RSS sync failed (non-fatal)', { err: err instanceof Error ? err.message : String(err) });
   }
 
-  logger.info('Sync done', { bico: { fetched: totalFetched, saved: totalSaved }, zakupkiSaved, platforms: platformResults, ms: Date.now() - startedAt });
-  return NextResponse.json({ ok: true, bico: { fetched: totalFetched, saved: totalSaved }, zakupkiSaved, platforms: platformResults });
+  const ms = Date.now() - startedAt;
+  logger.info('Sync done', { bico: { fetched: totalFetched, saved: totalSaved }, zakupkiSaved, platforms: platformResults, ms });
+
+  // Log sync event to bot_logs for the Reports page
+  try {
+    const { createServiceClient } = await import('@/lib/supabase/server');
+    const supabase = createServiceClient();
+    await supabase.from('bot_logs').insert({
+      user_id: null,
+      event_type: 'sync',
+      payload: { bico: { fetched: totalFetched, saved: totalSaved }, zakupkiSaved, ms },
+    });
+  } catch { /* non-fatal */ }
+
+  return NextResponse.json({ ok: true, bico: { fetched: totalFetched, saved: totalSaved }, zakupkiSaved, platforms: platformResults, ms });
+}
+
+function isAuthorized(req: NextRequest, cookieStore: { get(name: string): { value: string } | undefined }): boolean {
+  if (!CRON_SECRET) return true;
+  // Vercel cron sends: Authorization: Bearer <CRON_SECRET>
+  const authHeader = req.headers.get('authorization');
+  if (authHeader === `Bearer ${CRON_SECRET}`) return true;
+  // Manual trigger: ?secret=<CRON_SECRET>
+  if (req.nextUrl.searchParams.get('secret') === CRON_SECRET) return true;
+  // Admin cookie
+  if (cookieStore.get('admin_auth')?.value === 'true') return true;
+  return false;
 }
 
 export async function GET(req: NextRequest): Promise<NextResponse> {
-  const secret = req.nextUrl.searchParams.get('secret');
-
-  if (CRON_SECRET && secret !== CRON_SECRET) {
-    const cookieStore = await cookies();
-    const isAdmin = cookieStore.get('admin_auth')?.value === 'true';
-    if (!isAdmin) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+  const cookieStore = await cookies();
+  if (!isAuthorized(req, cookieStore)) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   try {
@@ -320,8 +340,8 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 }
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
-  const authHeader = req.headers.get('authorization');
-  if (CRON_SECRET && authHeader !== `Bearer ${CRON_SECRET}`) {
+  const cookieStore = await cookies();
+  if (!isAuthorized(req, cookieStore)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
   try {
